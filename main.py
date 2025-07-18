@@ -91,6 +91,22 @@ for name in sorted(all_data.keys()):
 
 # --- 4. Statistical Tests ---
 
+def matrix_ols_regression(y, X):
+    """
+    Performs OLS regression using matrix algebra with numpy.
+    """
+    try:
+        # Using the OLS formula: beta = (X'X)^(-1) * X'y
+        XTX = X.T @ X
+        XTX_inv = np.linalg.inv(XTX)
+        XTY = X.T @ y
+        beta = XTX_inv @ XTY
+        return beta.values
+    except np.linalg.LinAlgError:
+        # This can happen if the matrix is singular (perfect multicollinearity)
+        return None
+
+
 def adf_results(series):
     """Returns ADF test outputs."""
     stat, pval, _, _, crit, _ = adfuller(series.dropna(), autolag='AIC')
@@ -100,6 +116,7 @@ def adf_results(series):
         **{f'crit_{k}': v for k, v in crit.items()}
     }
 
+# DONT USE KPSS according to the lecture
 def kpss_results(series):
     """Returns KPSS test outputs."""
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
