@@ -5,6 +5,7 @@ import numpy as np
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
+from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
 
 # --- 1. Getting the data ---
@@ -101,7 +102,7 @@ def matrix_ols_regression(y, X):
         XTX_inv = np.linalg.inv(XTX)
         XTY = X.T @ y
         beta = XTX_inv @ XTY
-        return beta.values
+        return beta
     except np.linalg.LinAlgError:
         # This can happen if the matrix is singular (perfect multicollinearity)
         return None
@@ -138,7 +139,7 @@ def engle_granger(df, y, x):
 def analyze_error_correction_model(y, x, spread):
     """
     Error-Correction Model (ECM) analysis.
-    Returns the coefficient and p-value of the error-correction term.
+    Returns the coefficient and p-value of the error correction term.
     """
     # Lag the spread to get the error-correction term e(t-1)
     ec_term = spread.shift(1).dropna()
@@ -198,35 +199,88 @@ def kalman_hedge(df, y, x):
     spread = df[y] - beta * df[x] - alpha
     return {'kf_beta': beta, 'kf_spread': spread}
 
+
+def select_var_order(df, maxlags=10, trend='c'):
+    """
+    Multivariate time series df, fit VAR(p) for p=1..maxlags,
+    record AIC, BIC, HQIC, plus companion‐matrix eigenvalues,
+    """
+    records = []
+    for p in range(1, maxlags+1):
+        model = VAR(df)
+        try:
+            res = model.fit(p, trend=trend)
+        except Exception as e:
+            # singularity, too many parameters, etc.
+            print(f"p={p} failed: {e}")
+            continue
+
+        # companion‐matrix roots = VAR stability eigenvalues
+        eigs = res.roots
+        is_stable = all(abs(r) < 1 for r in eigs)
+
+        records.append({
+            'lag': p,
+            'aic': res.aic,
+            'bic': res.bic,
+            'hqic': res.hqic,
+            'stable': is_stable,
+            'eigenvalues': eigs
+        })
+
+    results_df = pd.DataFrame(records)
+    best_aic   = int(results_df.loc[results_df['aic'].idxmin(),  'lag'])
+    best_bic   = int(results_df.loc[results_df['bic'].idxmin(),  'lag'])
+    best_hqic  = int(results_df.loc[results_df['hqic'].idxmin(), 'lag'])
+
+    return results_df, best_aic, best_bic, best_hqic
+
 # 3. Loop through groups, collect into a DataFrame
 
 records = []
-
 for group, df in all_data.items():
+    # Univariate tests
     for col in df.columns:
-        adf = adf_results(df[col])
-        kps = kpss_results(df[col])
-        rec = {'group': group, 'asset': col, **adf, **kps}
-        records.append(rec)
+        records.append({'group': group, 'asset': col, **adf_results(df[col]), **kpss_results(df[col])})
 
-    # pair or triple logic
-    if len(df.columns) == 2:
+    # Pair vs. Triple logic
+    n_assets = len(df.columns)
+    if n_assets == 2:
         y, x = df.columns
+        # Engle–Granger
         eg = engle_granger(df, y, x)
-        rec = {'group': group, 'test': 'Engle-Granger', **{k: v for k, v in eg.items() if k!='spread'}}
-        records.append(rec)
+        records.append({'group': group, 'test': 'Engle-Granger', 'beta': eg['beta'], 'eg_pvalue': eg['eg_pvalue']})
+
+        # Matrix OLS
+        X0 = sm.add_constant(df[x])
+        mbeta = matrix_ols_regression(df[y].values, X0.values)
+        if mbeta is not None:
+            records.append({
+                'group': group,
+                'test': 'Matrix-OLS',
+                'const': mbeta[0],
+                'slope': mbeta[1]
+            })
+
+        # If cointegrated, OU & ECM
         if eg['spread'] is not None:
             ou = ou_params(eg['spread'])
-            rec = {'group': group, 'test': 'OU', **ou}
-            records.append(rec)
-        kf = kalman_hedge(df, y, x)
-        # store only summary stats for KF
-        rec = {'group': group, 'test': 'Kalman', 'kf_beta_mean': kf['kf_beta'].mean()}
-        records.append(rec)
+            records.append({'group': group, 'test': 'OU', **ou})
 
-    elif len(df.columns) == 3:
+            ecm = analyze_error_correction_model(df[y], df[x], eg['spread'])
+            records.append({'group': group, 'test': 'ECM', **ecm})
+
+        # Kalman summary
+        kf = kalman_hedge(df, y, x)
+        records.append({
+            'group': group,
+            'test': 'Kalman',
+            'kf_beta_mean': kf['kf_beta'].mean()
+        })
+
+    elif n_assets == 3:
+        # Johansen for triples
         jres = johansen(df)
-        rec = {'group': group, 'test': 'Johansen', **jres}
-        records.append(rec)
+        records.append({'group': group, 'test': 'Johansen', **jres})
 
 summary_df = pd.DataFrame(records)
