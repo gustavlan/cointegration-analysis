@@ -132,7 +132,7 @@ def engle_granger(df, y, x):
     model = sm.OLS(df[y], x0).fit()
     beta = model.params[x]
     spread = df[y] - beta * df[x]
-    pval = adfuller(spread.dropna())[1]
+    pval = adfuller(spread.dropna(), maxlag=1, autolag=None)[1]
     return {'beta': beta, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None}
 
 def ou_params(spread):
