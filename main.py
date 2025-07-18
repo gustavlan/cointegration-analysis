@@ -135,6 +135,33 @@ def engle_granger(df, y, x):
     pval = adfuller(spread.dropna(), maxlag=1, autolag=None)[1]
     return {'beta': beta, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None}
 
+def analyze_error_correction_model(y, x, spread):
+    """
+    Error-Correction Model (ECM) analysis.
+    Returns the coefficient and p-value of the error-correction term.
+    """
+    # Lag the spread to get the error-correction term e(t-1)
+    ec_term = spread.shift(1).dropna()
+    
+    # Calculate the differences of the original series
+    delta_y, delta_x = y.diff().dropna(), x.diff().dropna()
+    
+    # Align all series to the same index
+    aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna()
+    aligned_data.columns = ['delta_y', 'delta_x', 'ec_term']
+
+    # Regress delta_y on delta_x and the error correction term
+    X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']])
+    y_ecm = aligned_data['delta_y']
+    
+    model = sm.OLS(y_ecm, X_ecm).fit()
+    
+    # Extract results for the error correction term
+    ec_coeff = model.params['ec_term']
+    ec_pvalue = model.pvalues['ec_term']
+    
+    return {'ecm_coeff': ec_coeff, 'ecm_pvalue': ec_pvalue}
+
 def ou_params(spread):
     """Returns OU mu, theta, and half-life."""
     dS = spread.diff().dropna()
