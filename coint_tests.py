@@ -1,6 +1,4 @@
-import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
 import numpy as np
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, kpss
@@ -8,89 +6,6 @@ from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
 
-# --- 1. Getting the data ---
-
-end_date = datetime.now()
-start_date = end_date - timedelta(days=5*365) # five years of data
-
-# A dictionary to organize all the asset groups and their tickers
-asset_groups = {
-    # Commodities
-    "precious_metals_triple": ["GC=F", "SI=F", "PL=F"], # Gold, Silver, Platinum Futures
-    "oil_pair": ["CL=F", "BZ=F"],                     # WTI, Brent Crude Futures
-    "agri_pair": ["ZC=F", "ZS=F"],                    # Corn, Soybean Futures
-
-    # Fixed Income & Currency
-    "yield_pair": ["^TNX", "IGLT.L"],                 # US 10Y Yield, iShares UK Gilts ETF
-    "currency_pair": ["AUDUSD=X", "CADUSD=X"],        # AUD/USD, CAD/USD
-
-    # Volatility
-    "volatility_pair": ["^VIX", "VIXY"],            # US VIX Index vs. Short-Term VIX Futures ETF*
-
-    # Country Indices
-    "eu_index_pair_1": ["^FCHI", "^GDAXI"],           # CAC 40, DAX
-    "eu_index_pair_2": ["^IBEX", "FTSEMIB.MI"],      # IBEX 35, FTSE MIB
-
-    # Equities
-    "fr_banking_pair": ["BNP.PA", "GLE.PA"],          # BNP Paribas, Societe Generale
-    "fast_fashion_pair": ["ITX.MC", "HM-B.ST"],       # Inditex, H&M
-    "german_auto_triple": ["VOW3.DE", "MBG.DE", "BMW.DE"], # VW, Mercedes, BMW
-    "investor_ab_pair": ["INVE-A.ST", "INVE-B.ST"],    # Investor A, Investor B
-    "vw_porsche_pair": ["VOW3.DE", "P911.DE"],        # VW, Porsche AG
-    "semiconductor_pair": ["ASML.AS", "IFX.DE"],      # ASML, Infineon
-
-    # ETFs
-    "sector_etf_pair": ["XLRE", "XLU"]                # Real Estate ETF, Utilities ETF
-}
-
-all_data = {}
-
-print("Starting data download...")
-
-for group_name, tickers in asset_groups.items():
-    print(f"--> Downloading data for: {group_name}")
-    try:
-        # Download daily data for the specified tickers
-        data = yf.download(tickers,
-                           start=start_date.strftime('%Y-%m-%d'),
-                           end=end_date.strftime('%Y-%m-%d'),
-                           interval="1d",
-                           auto_adjust=True,
-                           group_by='ticker')
-
-        # When a single ticker in a group fails, yfinance might return a DataFrame
-        # with only the successful tickers. We need to handle this.
-        if isinstance(data.columns, pd.MultiIndex):
-            df_processed = data.stack(level=0, future_stack=True).rename_axis(['Date', 'Ticker']).reset_index(level=1)
-            price_data = df_processed.pivot(columns='Ticker', values='Close')
-        else:
-            # If only one ticker was successful, it won't have a multi-index
-            price_data = data[['Close']]
-            # Rename column to the correct ticker if there's only one
-            if len(tickers) == 1:
-                price_data.columns = tickers
-
-        price_data = price_data.ffill().dropna()
-
-        if not price_data.empty:
-            all_data[group_name] = price_data
-        else:
-            print(f"    No data for {group_name} after processing.")
-
-    except Exception as e:
-        print(f"    An error occurred while downloading {group_name}: {e}")
-
-print("\nData download complete.")
-
-# --- 3. Verification ---
-
-print("\n--- Verification ---")
-print(f"Successfully downloaded data for {len(all_data)} groups.")
-print("The following data groups are now available:")
-for name in sorted(all_data.keys()):
-    print(f"- {name}")
-
-# --- 4. Statistical Tests ---
 
 def matrix_ols_regression(y, X):
     """
@@ -282,53 +197,3 @@ def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
     
     return pd.DataFrame(records)
 
-
-# 3. Loop through groups, collect into a DataFrame
-
-records = []
-for group, df in all_data.items():
-    # Univariate tests
-    for col in df.columns:
-        records.append({'group': group, 'asset': col, **adf_results(df[col]), **kpss_results(df[col])})
-
-    # Pair vs. Triple logic
-    n_assets = len(df.columns)
-    if n_assets == 2:
-        y, x = df.columns
-        # Engle–Granger
-        eg = engle_granger(df, y, x)
-        records.append({'group': group, 'test': 'Engle-Granger', 'beta': eg['beta'], 'eg_pvalue': eg['eg_pvalue']})
-
-        # Matrix OLS
-        X0 = sm.add_constant(df[x])
-        mbeta = matrix_ols_regression(df[y].values, X0.values)
-        if mbeta is not None:
-            records.append({
-                'group': group,
-                'test': 'Matrix-OLS',
-                'const': mbeta[0],
-                'slope': mbeta[1]
-            })
-
-        # If cointegrated, OU & ECM
-        if eg['spread'] is not None:
-            ou = ou_params(eg['spread'])
-            records.append({'group': group, 'test': 'OU', **ou})
-
-            ecm = analyze_error_correction_model(df[y], df[x], eg['spread'])
-            records.append({'group': group, 'test': 'ECM', **ecm})
-
-        # Kalman summary
-        kf = kalman_hedge(df, y, x)
-        records.append({
-            'group': group,
-            'test': 'Kalman',
-            'kf_beta_mean': kf['kf_beta'].mean()
-        })
-
-    elif n_assets == 3:
-        # Johansen for triples
-        jres = johansen(df)
-        records.append({'group': group, 'test': 'Johansen', **jres})
-
-summary_df = pd.DataFrame(records)
