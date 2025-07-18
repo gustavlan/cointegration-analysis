@@ -235,6 +235,52 @@ def select_var_order(df, maxlags=10, trend='c'):
 
     return results_df, best_aic, best_bic, best_hqic
 
+
+def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
+    """
+    Split df into n_periods equal length slices,
+    run Engle Granger + ECM on each, and return a summary DataFrame.
+
+    """
+    # 1. compute period boundaries
+    idx = df.index.sort_values()
+    boundaries = pd.to_datetime(
+        np.linspace(idx[0].value, idx[-1].value, n_periods + 1).astype('int64')
+    )
+    
+    records = []
+    for i in range(n_periods):
+        start, end = boundaries[i], boundaries[i+1]
+        slice_df = df.loc[start:end].dropna()
+        if len(slice_df) < min_obs:
+            continue
+        
+        # 2. Engle–Granger on this slice
+        eg   = engle_granger(slice_df, y, x)
+        beta = eg['beta']
+        p_eg = eg['eg_pvalue']
+        
+        # 3. If cointegrated, get ECM coeff; else NaNs
+        if eg['spread'] is not None:
+            ecm_res = analyze_error_correction_model(
+                slice_df[y], slice_df[x], eg['spread']
+            )
+            coeff, p_ec = ecm_res['ecm_coeff'], ecm_res['ecm_pvalue']
+        else:
+            coeff, p_ec = np.nan, np.nan
+        
+        records.append({
+            'period_start': start.date(),
+            'period_end':   end.date(),
+            'beta':         beta,
+            'eg_pvalue':    p_eg,
+            'ecm_coeff':    coeff,
+            'ecm_pvalue':   p_ec
+        })
+    
+    return pd.DataFrame(records)
+
+
 # 3. Loop through groups, collect into a DataFrame
 
 records = []
