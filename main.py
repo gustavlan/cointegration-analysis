@@ -173,7 +173,9 @@ def ou_params(spread):
     theta = -model.params['S1']
     mu = model.params['const'] / theta
     hl = np.log(2) / theta
-    return {'ou_mu': mu, 'ou_theta': theta, 'ou_halflife': hl}
+    sigma_eq = spread.std()
+    return {'ou_mu': mu, 'ou_theta': theta, 'ou_halflife': hl, 'ou_sigma': sigma_eq}
+
 
 def johansen(df):
     """Returns number of coint relationships and eigenvector for first."""
