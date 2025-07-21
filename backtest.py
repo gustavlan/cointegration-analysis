@@ -105,8 +105,7 @@ def nested_cv(df,
 
     for (t0, t1, v0, v1) in rolling_time_series_splits(dates, **split_kwargs):
         # get masks
-        train_mask, _ = purged_split_index(dates, t0, t1, v0, v1)
-        _, test_mask = purged_split_index(dates, t0, t1, v0, v1)
+        train_mask, test_mask = purged_split_index(dates, t0, t1, v0, v1)
         
         train_spread = df.loc[train_mask, spread_col]
         test_spread  = df.loc[test_mask,  spread_col]

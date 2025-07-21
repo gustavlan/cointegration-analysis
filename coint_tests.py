@@ -1,10 +1,17 @@
+import warnings
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-from statsmodels.tsa.stattools import adfuller, kpss
+from statsmodels.tsa.stattools import adfuller, kpss,InterpolationWarning
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
+
+warnings.filterwarnings(
+    'ignore',
+    message='The test statistic is outside of the range of p-values available',
+    category=InterpolationWarning
+)
 
 
 def matrix_ols_regression(y, X):
@@ -197,3 +204,73 @@ def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
     
     return pd.DataFrame(records)
 
+def summarize_cointegration_tests(all_data: dict):
+    """
+    Perform univariate and cointegration tests on grouped asset series and collect results in a DataFrame.
+    """
+    records = []
+
+    for group, df in all_data.items():
+        # Univariate tests: ADF and KPSS for each asset
+        for asset in df.columns:
+            adf_res = adf_results(df[asset])
+            kpss_res = kpss_results(df[asset])
+            records.append({
+                'group': group,
+                'asset': asset,
+                **adf_res,
+                **kpss_res
+            })
+
+        # Determine number of assets for pair vs. triple logic
+        n_assets = df.shape[1]
+
+        if n_assets == 2:
+            y, x = df.columns
+
+            # Engle–Granger two-step cointegration
+            eg = engle_granger(df, y, x)
+            records.append({
+                'group': group,
+                'test': 'Engle-Granger',
+                'beta': eg['beta'],
+                'eg_pvalue': eg['eg_pvalue']
+            })
+
+            # Matrix OLS as an alternative hedge ratio
+            X0 = sm.add_constant(df[x])
+            mbeta = matrix_ols_regression(df[y].values, X0.values)
+            if mbeta is not None:
+                records.append({
+                    'group': group,
+                    'test': 'Matrix-OLS',
+                    'const': mbeta[0],
+                    'slope': mbeta[1]
+                })
+
+            # If cointegrated, estimate OU and ECM
+            if eg.get('spread') is not None:
+                ou = ou_params(eg['spread'])
+                records.append({'group': group, 'test': 'OU', **ou})
+
+                ecm = analyze_error_correction_model(df[y], df[x], eg['spread'])
+                records.append({'group': group, 'test': 'ECM', **ecm})
+
+            # Kalman filter summary for dynamic hedge ratio
+            kf = kalman_hedge(df, y, x)
+            records.append({
+                'group': group,
+                'test': 'Kalman',
+                'kf_beta_mean': kf['kf_beta'].mean()
+            })
+
+        elif n_assets == 3:
+            # Johansen test for triple cointegration
+            jres = johansen(df)
+            records.append({
+                'group': group,
+                'test': 'Johansen',
+                **jres
+            })
+
+    return pd.DataFrame(records)

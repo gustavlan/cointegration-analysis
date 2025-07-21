@@ -102,3 +102,52 @@ def plot_performance(strat_ret, sharpe_window=63, beta_window=126):
     plot_drawdown(strat_ret)
     plot_rolling_sharpe(strat_ret, window=sharpe_window)
     plot_rolling_beta(strat_ret, window=beta_window)
+
+
+def analyze_pairs_nb(all_data, selected,
+                     Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0):
+    """
+    analysis of selected 2-asset pairs.
+    """
+    summary = []
+    opt_tables = {}
+
+    for pair in selected:
+        df = all_data.get(pair)
+        if df is None or df.shape[1] != 2:
+            print(f"'{pair}': not found or not a 2-asset series.")
+            continue
+
+        y_col, x_col = df.columns
+        eg = engle_granger(df, y_col, x_col)
+        spread, beta = eg['spread'], eg['beta']
+        if spread is None:
+            print(f"'{pair}' not cointegrated (p={eg['eg_pvalue']:.3f}), skipping.")
+            continue
+
+        mu, sigma = spread.mean(), spread.std()
+        opt_df = optimize_thresholds(
+            spread, mu, sigma, beta,
+            y=df[y_col], x=df[x_col],
+            Z_min=Z_min, Z_max=Z_max, dZ=dZ, cost=cost
+        )
+        opt_tables[pair] = opt_df
+
+        # pick best-Z by cum_PnL
+        best = opt_df.loc[opt_df['cum_PnL'].idxmax()]
+        summary.append({
+            'pair':     pair,
+            'best_Z':   best['Z'],
+            'N_trades': best['N_trades'],
+            'cum_PnL':  best['cum_PnL'],
+            'avg_PnL':  best['avg_PnL']
+        })
+
+        # plot inline
+        fig = plot_threshold_tradeoff(opt_df)
+        fig.suptitle(f"Tradeoff: {pair}", y=1.02)
+        plt.show()
+
+    summary_df = pd.DataFrame(summary)
+
+    return summary_df, opt_tables
