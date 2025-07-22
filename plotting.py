@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
+from coint_tests import engle_granger
+from threshold_optimization import optimize_thresholds, plot_threshold_tradeoff
 
 
 def _fetch_benchmarks(index):

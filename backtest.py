@@ -52,32 +52,32 @@ def generate_signals(spread, mu_e, sigma_eq, z):
 
 # Performance metrics
 def performance_metrics(signals, spread):
-    """
-    Compute returns = signal_{t-1} * Δspread_t
-    Then compute:
-      • annualized Sharpe (252 trading days)
-      • max drawdown
-      • turnover = mean absolute signal change
-      • hit ratio = P[returns>0 | position!=0]
-    """
+
+    # 1. Compute period returns and cumulative P/L
     ret = signals.shift(1) * spread.diff()
     cum_ret = ret.cumsum()
-    
-    # Sharpe
-    ann_sharpe = (ret.mean() * 252) / (ret.std() * np.sqrt(252))
-    
-    # Drawdown
+
+    # 2. Annualized Sharpe with guard
+    mean_ret = ret.mean() * 252
+    vol = ret.std() * np.sqrt(252)
+
+    if vol == 0 or np.isnan(vol):
+        ann_sharpe = np.nan
+    else:
+        ann_sharpe = mean_ret / vol
+
+    # 3. Drawdown
     running_max = cum_ret.cummax()
     drawdown   = cum_ret - running_max
     max_dd     = drawdown.min()
-    
-    # Turnover
+
+    # 4. Turnover
     turnover = signals.diff().abs().mean()
-    
-    # Hit ratio
+
+    # 5. Hit ratio
     mask = signals.shift(1) != 0
     hit_ratio = (ret[mask] > 0).mean()
-    
+
     return {
         'sharpe':       ann_sharpe,
         'max_drawdown': max_dd,
