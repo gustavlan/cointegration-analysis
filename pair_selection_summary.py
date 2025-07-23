@@ -6,7 +6,7 @@ from coint_tests import (
     ou_params,
     kalman_hedge,
     analyze_error_correction_model,
-    johansen  # make sure this returns the raw eigenvectors, not just counts
+    johansen
 )
 from threshold_optimization import optimize_thresholds
 
@@ -30,7 +30,7 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
     for name, df in all_data.items():
         n = df.shape[1]
 
-        # --- 1) Compute the raw spread & coins stats ---
+        # Compute the spread & coins stats
         if n == 2:
             y, x = df.columns
             eg  = engle_granger(df, y, x)
@@ -38,7 +38,7 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
             beta   = eg['beta']
             eg_pv  = eg['eg_pvalue']
 
-            # ECM & Kalman only for pairs
+            # ECM & Kalman for pairs
             if spread is not None:
                 ecm_pv = analyze_error_correction_model(df[y], df[x], spread)['ecm_pvalue']
                 kf_ts  = kalman_hedge(df, y, x)['kf_beta']
@@ -46,25 +46,20 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
             else:
                 ecm_pv, beta_stab = np.nan, np.nan
 
-        elif n == 3:
-            # Johansen test
+        elif n == 3: # if more than 2 Johansen test
             joh = johansen(df)
             eg_pv     = np.nan
             ecm_pv    = np.nan
             beta_stab = np.nan
-
-            # build the spread as first eigenvector combination
-            vec = np.array([joh[f'eig_{i}'] for i in range(3)])
-            # normalize so sum(abs(vec))==1
-            vec = vec / np.sum(np.abs(vec))
+            vec = np.array([joh[f'eig_{i}'] for i in range(3)]) # build the spread as first eigenvector combination
+            vec = vec / np.sum(np.abs(vec)) # normalize so sum(abs(vec))==1
             spread = df.dot(vec)
-            beta   = None  # no single beta for >2 assets
+            beta   = None  # no beta for >2 assets
 
         else:
-            # skip everything else
             continue
 
-        # --- 2) OU‐params & static Sharpe for the spread (if we have one) ---
+        # OU‐params & static Sharpe for the spread
         if spread is not None:
             ou   = ou_params(spread)
             hl   = ou['ou_halflife']
@@ -73,7 +68,7 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
         else:
             hl, sig, sharpe = np.nan, np.nan, np.nan
 
-        # --- 3) Z‐sweep backtest (if spread exists) ---
+        # Z‐sweep backtest
         if spread is not None:
             df_opt  = optimize_thresholds(
                           spread, spread.mean(), spread.std(), 
