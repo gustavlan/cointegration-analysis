@@ -8,7 +8,7 @@ def rolling_time_series_splits(dates,
                                test_months=6, 
                                step_months=3):
     """
-    Yields (train_start, train_end, test_start, test_end) tuples.
+    Create train_start, train_end, test_start, test_end tuples.
     """
     start = dates.min()
     end   = dates.max()
@@ -27,7 +27,7 @@ def purged_split_index(df_index,
                        test_start, test_end, 
                        purge_days=5):
     """
-    Given index and exact train/test boundaries, returns
+    Given index and train/test boundaries, returns
     boolean masks for train and test with a purge zone around test.
     """
     purge_start = test_start - pd.Timedelta(days=purge_days)
@@ -53,30 +53,18 @@ def generate_signals(spread, mu_e, sigma_eq, z):
 # Performance metrics
 def performance_metrics(signals, spread):
 
-    # 1. Compute period returns and cumulative P/L
+    # Compute period returns and cumulative P/L
     ret = signals.shift(1) * spread.diff()
     cum_ret = ret.cumsum()
-
-    # 2. Annualized Sharpe with guard
-    mean_ret = ret.mean() * 252
+    mean_ret = ret.mean() * 252 
     vol = ret.std() * np.sqrt(252)
-
-    if vol == 0 or np.isnan(vol):
+    if vol == 0 or np.isnan(vol): # Annualized Sharpe, make sure not to divide by zero
         ann_sharpe = np.nan
     else:
         ann_sharpe = mean_ret / vol
-
-    # 3. Drawdown
-    running_max = cum_ret.cummax()
-    drawdown   = cum_ret - running_max
-    max_dd     = drawdown.min()
-
-    # 4. Turnover
-    turnover = signals.diff().abs().mean()
-
-    # 5. Hit ratio
-    mask = signals.shift(1) != 0
-    hit_ratio = (ret[mask] > 0).mean()
+    max_dd = (cum_ret - cum_ret.cummax()).min() # max drawdown
+    turnover = signals.diff().abs().mean() # Turnover
+    hit_ratio = (ret[signals.shift(1) != 0] > 0).mean() # hit ratio
 
     return {
         'sharpe':       ann_sharpe,
@@ -93,20 +81,15 @@ def nested_cv(df,
               z_list=None,
               **split_kwargs):
     """
-    df must contain a DateTimeIndex and a column `spread_col`.
-    mu_e, sigma_eq: pre‐computed scalars (or series) for the full sample.
-    z_list: list of z‐score thresholds to grid‐search.
-    split_kwargs passed to rolling_time_series_splits.
+    df must have a DateTimeIndex and a column `spread_col`
     """
     if z_list is None:
         z_list = [0.5, 1.0, 1.5, 2.0]
     results = []
-    dates = df.index
 
-    for (t0, t1, v0, v1) in rolling_time_series_splits(dates, **split_kwargs):
+    for (t0, t1, v0, v1) in rolling_time_series_splits(df.index, **split_kwargs):
         # get masks
-        train_mask, test_mask = purged_split_index(dates, t0, t1, v0, v1)
-        
+        train_mask, test_mask = purged_split_index(df.index, t0, t1, v0, v1)
         train_spread = df.loc[train_mask, spread_col]
         test_spread  = df.loc[test_mask,  spread_col]
         
