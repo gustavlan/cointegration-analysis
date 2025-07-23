@@ -10,7 +10,7 @@ def backtest_spread(e: pd.Series,
                     x: pd.Series,
                     Z: float,
                     cost: float = 0.0
-                   ) -> dict:
+                   ):
     """
     Backtest a simple mean-reversion strategy on the spread e_t:
       - Enter SHORT when e_t > mu + Z*sigma
@@ -22,7 +22,7 @@ def backtest_spread(e: pd.Series,
     lower = mu - Z * sigma
 
     in_trade    = False
-    direction   = 0         # +1 for long, -1 for short
+    direction   = 0 # +1 for long, -1 for short
     entry_idx   = None
     entry_y     = entry_x = None
 
@@ -44,12 +44,10 @@ def backtest_spread(e: pd.Series,
                 entry_x     = x.loc[idx]
         else:
             # exit signal
-            if (direction == 1  and et >= mu) or \
-               (direction == -1 and et <= mu):
+            if (direction == 1  and et >= mu) or (direction == -1 and et <= mu):
                 exit_y = y.loc[idx]
                 exit_x = x.loc[idx]
-                raw_pnl = direction * ((exit_y - entry_y)
-                                       - beta * (exit_x - entry_x))
+                raw_pnl = direction * ((exit_y - entry_y) - beta * (exit_x - entry_x))
                 pnl = raw_pnl - cost
                 pnls.append(pnl)
                 durations.append((idx - entry_idx).days)
@@ -77,24 +75,24 @@ def optimize_thresholds(e: pd.Series,
                         Z_max: float = 3.0,
                         dZ: float   = 0.1,
                         cost: float = 0.0
-                       ) -> pd.DataFrame:
+                       ):
     """
     Sweep Z from Z_min to Z_max in steps of dZ,
-    backtest each, and return a DataFrame of results.
+    backtest each, and return a df of results.
     """
-    Zs      = np.arange(Z_min, Z_max + dZ, dZ)
+    Zs = np.arange(Z_min, Z_max + dZ, dZ)
     records = []
 
     for Z in Zs:
-        stats      = backtest_spread(e, mu, sigma, beta, y, x, Z, cost)
+        stats = backtest_spread(e, mu, sigma, beta, y, x, Z, cost)
         stats['Z'] = Z
         records.append(stats)
 
     return pd.DataFrame(records)
 
-def plot_threshold_tradeoff(df_res: pd.DataFrame) -> plt.Figure:
+def plot_threshold_tradeoff(df_res: pd.DataFrame):
     """
-    Dual axis plot: cum_PnL vs Z (left) and N_trades vs Z (right).
+    Dual axis plot cum_PnL vs Z (left) and N_trades vs Z (right).
     """
     fig, ax1 = plt.subplots(figsize=(8,4))
     ax1.plot(df_res['Z'], df_res['cum_PnL'], label='Cumulative P&L')
