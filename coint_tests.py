@@ -27,7 +27,7 @@ def matrix_ols_regression(y, X):
         beta = XTX_inv @ XTY
         return beta
     except np.linalg.LinAlgError:
-        # This can happen if the matrix is singular (perfect multicollinearity)
+        # Can happen if the matrix is singular (perfect multicollinearity)
         return None
 
 
@@ -40,7 +40,7 @@ def adf_results(series):
         **{f'crit_{k}': v for k, v in crit.items()}
     }
 
-# DONT USE KPSS according to the lecture
+
 def kpss_results(series):
     """Returns KPSS test outputs."""
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
@@ -62,27 +62,16 @@ def engle_granger(df, y, x):
 
 def analyze_error_correction_model(y, x, spread):
     """
-    Error-Correction Model (ECM) analysis.
-    Returns the coefficient and p-value of the error correction term.
+    Error-Correction Model (ECM) returns the coefficient and p-value of the error term.
     """
-    # Lag the spread to get the error-correction term e(t-1)
-    ec_term = spread.shift(1).dropna()
-    
-    # Calculate the differences of the original series
-    delta_y, delta_x = y.diff().dropna(), x.diff().dropna()
-    
-    # Align all series to the same index
-    aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna()
+    ec_term = spread.shift(1).dropna() # lag spread by 1 period
+    delta_y, delta_x = y.diff().dropna(), x.diff().dropna() # difference to original
+    aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna() # Align all series to the same index
     aligned_data.columns = ['delta_y', 'delta_x', 'ec_term']
-
-    # Regress delta_y on delta_x and the error correction term
-    X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']])
+    X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']]) # regress on error term
     y_ecm = aligned_data['delta_y']
-    
     model = sm.OLS(y_ecm, X_ecm).fit()
-    
-    # Extract results for the error correction term
-    ec_coeff = model.params['ec_term']
+    ec_coeff = model.params['ec_term'] # extract results
     ec_pvalue = model.pvalues['ec_term']
     
     return {'ecm_coeff': ec_coeff, 'ecm_pvalue': ec_pvalue}
@@ -128,8 +117,7 @@ def kalman_hedge(df, y, x):
 
 def select_var_order(df, maxlags=10, trend='c'):
     """
-    Multivariate time series df, fit VAR(p) for p=1..maxlags,
-    record AIC, BIC, HQIC, plus companion‐matrix eigenvalues,
+    Multivariate time series df, fit VAR(p)
     """
     records = []
     for p in range(1, maxlags+1):
@@ -137,7 +125,7 @@ def select_var_order(df, maxlags=10, trend='c'):
         try:
             res = model.fit(p, trend=trend)
         except Exception as e:
-            # singularity, too many parameters, etc.
+            # singularity, too many parameters etc.
             print(f"p={p} failed: {e}")
             continue
 
@@ -164,11 +152,9 @@ def select_var_order(df, maxlags=10, trend='c'):
 
 def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
     """
-    Split df into n_periods equal length slices,
-    run Engle Granger + ECM on each, and return a summary DataFrame.
-
+    Split df into n_periods equal length slices run Engle Granger + ECM on each
     """
-    # 1. compute period boundaries
+    # compute period boundaries
     idx = df.index.sort_values()
     boundaries = pd.to_datetime(
         np.linspace(idx[0].value, idx[-1].value, n_periods + 1).astype('int64')
@@ -181,12 +167,12 @@ def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
         if len(slice_df) < min_obs:
             continue
         
-        # 2. Engle–Granger on this slice
+        # Engle Granger on this slice
         eg   = engle_granger(slice_df, y, x)
         beta = eg['beta']
         p_eg = eg['eg_pvalue']
         
-        # 3. If cointegrated, get ECM coeff; else NaNs
+        # If cointegrated, get ECM coeff; else NaNs
         if eg['spread'] is not None:
             ecm_res = analyze_error_correction_model(
                 slice_df[y], slice_df[x], eg['spread']
@@ -208,7 +194,7 @@ def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
 
 def summarize_cointegration_tests(all_data: dict):
     """
-    Perform univariate and cointegration tests on grouped asset series and collect results in a DataFrame.
+    Perform univariate and cointegration tests on grouped asset series and collect results in a df.
     """
     records = []
 
@@ -230,7 +216,7 @@ def summarize_cointegration_tests(all_data: dict):
         if n_assets == 2:
             y, x = df.columns
 
-            # Engle–Granger two-step cointegration
+            # Engle Granger two step cointegration
             eg = engle_granger(df, y, x)
             records.append({
                 'group': group,
@@ -275,78 +261,6 @@ def summarize_cointegration_tests(all_data: dict):
                 **jres
             })
 
-    return pd.DataFrame(records)
-
-def summarize_cointegration_tests(all_data: dict):
-    """
-    Perform univariate and cointegration tests on grouped asset series.
-    """
-    records = []
-
-    for group, df in all_data.items():
-        # Univariate tests: ADF and KPSS for each asset
-        for asset in df.columns:
-            adf_res = adf_results(df[asset])
-            kpss_res = kpss_results(df[asset])
-            records.append({
-                'group': group,
-                'asset': asset,
-                **adf_res,
-                **kpss_res
-            })
-
-        # Determine number of assets for pair vs. triple logic
-        n_assets = df.shape[1]
-
-        if n_assets == 2:
-            y, x = df.columns
-
-            # Engle–Granger two-step cointegration
-            eg = engle_granger(df, y, x)
-            records.append({
-                'group': group,
-                'test': 'Engle-Granger',
-                'beta': eg['beta'],
-                'eg_pvalue': eg['eg_pvalue']
-            })
-
-            # Matrix OLS as an alternative hedge ratio
-            X0 = sm.add_constant(df[x])
-            mbeta = matrix_ols_regression(df[y].values, X0.values)
-            if mbeta is not None:
-                records.append({
-                    'group': group,
-                    'test': 'Matrix-OLS',
-                    'const': mbeta[0],
-                    'slope': mbeta[1]
-                })
-
-            # If cointegrated, estimate OU and ECM
-            if eg.get('spread') is not None:
-                ou = ou_params(eg['spread'])
-                records.append({'group': group, 'test': 'OU', **ou})
-
-                ecm = analyze_error_correction_model(df[y], df[x], eg['spread'])
-                records.append({'group': group, 'test': 'ECM', **ecm})
-
-            # Kalman filter summary for dynamic hedge ratio
-            kf = kalman_hedge(df, y, x)
-            records.append({
-                'group': group,
-                'test': 'Kalman',
-                'kf_beta_mean': kf['kf_beta'].mean()
-            })
-
-        elif n_assets == 3:
-            # Johansen test for triple cointegration
-            jres = johansen(df)
-            records.append({
-                'group': group,
-                'test': 'Johansen',
-                **jres
-            })
-
-    # Compile all results into a DataFrame
     return pd.DataFrame(records)
 
 
@@ -367,19 +281,17 @@ def run_pair_backtests(
         df = all_data[pair]
         y, x = df.columns
 
-        # 1. Engle–Granger: obtain stationary spread
+        # Engle–Granger: obtain stationary spread
         eg = engle_granger(df, y, x)
         spread = eg['spread'].dropna()
 
-        # 2. Estimate OU parameters on spread
+        # Estimate OU parameters on spread
         ou = ou_params(spread)
         mu_e = ou['ou_mu']
         sigma_eq = ou['ou_sigma']
-
-        # 3. Prepare DataFrame for nested CV
         df_pair = pd.DataFrame({'spread': spread})
 
-        # 4. Run nested cross‑validation
+        # Run nested cross‑validation
         cv_df = nested_cv(
             df_pair,
             spread_col='spread',
