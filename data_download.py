@@ -5,10 +5,7 @@ from datetime import datetime
 def fetch_asset_data(asset_groups: dict,
                      start_date: datetime,
                      end_date:   datetime
-                    ) -> dict[str, pd.DataFrame]:
-    """
-    Download and preprocess daily Close prices for each group in `asset_groups`.
-    """
+                    ):
     all_data = {}
 
     for group_name, tickers in asset_groups.items():
