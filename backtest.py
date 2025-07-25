@@ -117,3 +117,20 @@ def nested_cv(df,
         })
 
     return pd.DataFrame(results)
+
+def generate_pair_pnl(all_data, summary_df, selected):
+    pnl = {}
+    for pair in selected:
+        df = all_data[pair]
+        y, x = df.columns
+        from coint_tests import engle_granger  # Local import to avoid circular dependency
+        eg = engle_granger(df, y, x)
+        spread = eg['spread'].dropna()
+        best_Z = summary_df.loc[summary_df['pair'] == pair, 'best_Z'].iloc[0]
+        from backtest import generate_signals  # Local import if needed
+        mu, sigma = spread.mean(), spread.std()
+        sig = generate_signals(spread, mu, sigma, best_Z)
+        ret = sig.shift(1) * spread.diff()
+        pnl[pair] = ret.cumsum()
+        
+    return pnl
