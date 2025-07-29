@@ -4,7 +4,8 @@ from datetime import datetime
 
 def fetch_asset_data(asset_groups: dict,
                      start_date: datetime,
-                     end_date:   datetime
+                     end_date:   datetime,
+                     freq: str = "B"  # Default to business days
                     ):
     all_data = {}
 
@@ -34,6 +35,8 @@ def fetch_asset_data(asset_groups: dict,
                     price.columns = tickers
 
             price = price.ffill().dropna()
+            price = price.asfreq(freq, method='ffill')
+            
             if not price.empty:
                 all_data[group_name] = price
 

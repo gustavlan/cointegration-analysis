@@ -31,8 +31,9 @@ def matrix_ols_regression(y, X):
         return None
 
 
-def adf_results(series):
+def adf_results(series, freq="B"):
     """Returns ADF test outputs."""
+    series = series.asfreq(freq)
     stat, pval, _, _, crit, _ = adfuller(series.dropna(), autolag='AIC')
     return {
         'stat': stat,
@@ -41,8 +42,9 @@ def adf_results(series):
     }
 
 
-def kpss_results(series):
+def kpss_results(series, freq="B"):
     """Returns KPSS test outputs."""
+    series = series.asfreq(freq)
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
     return {
         'stat': stat,
@@ -50,8 +52,10 @@ def kpss_results(series):
         **{f'crit_{k}': v for k, v in crit.items()}
     }
 
-def engle_granger(df, y, x):
+def engle_granger(df, y, x, freq="B"):
     """Returns hedge ratio and ADF p-value on residuals, plus spread if cointegrated."""
+    # Ensure frequency is set
+    df = df.asfreq(freq)
     x0 = sm.add_constant(df[x])
     model = sm.OLS(df[y], x0).fit()
     beta = model.params[x]
@@ -60,10 +64,11 @@ def engle_granger(df, y, x):
     return {'beta': beta, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None}
 
 
-def analyze_error_correction_model(y, x, spread):
+def analyze_error_correction_model(y, x, spread, freq="B"):
     """
     Error-Correction Model (ECM) returns the coefficient and p-value of the error term.
     """
+    y, x, spread = y.asfreq(freq), x.asfreq(freq), spread.asfreq(freq)
     ec_term = spread.shift(1).dropna() # lag spread by 1 period
     delta_y, delta_x = y.diff().dropna(), x.diff().dropna() # difference to original
     aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna() # Align all series to the same index
@@ -76,8 +81,9 @@ def analyze_error_correction_model(y, x, spread):
     
     return {'ecm_coeff': ec_coeff, 'ecm_pvalue': ec_pvalue}
 
-def ou_params(spread):
+def ou_params(spread, freq="B"):
     """Returns OU mu, theta, and half-life."""
+    spread = spread.asfreq(freq)
     dS = spread.diff().dropna()
     S1 = spread.shift(1).dropna()
     df = pd.concat([dS, S1], axis=1).dropna()
@@ -90,15 +96,17 @@ def ou_params(spread):
     return {'ou_mu': mu, 'ou_theta': theta, 'ou_halflife': hl, 'ou_sigma': sigma_eq}
 
 
-def johansen(df):
+def johansen(df, freq="B"):
     """Returns number of coint relationships and eigenvector for first."""
+    df = df.asfreq(freq)
     res = coint_johansen(df.dropna(), det_order=0, k_ar_diff=1)
     n = np.sum(res.lr1 > res.cvt[:, 1])
     vec = res.evec[:, 0]
     return {'johansen_n': int(n), **{f'eig_{i}': v for i, v in enumerate(vec)}}
 
-def kalman_hedge(df, y, x):
+def kalman_hedge(df, y, x, freq="B"):
     """Returns dynamic beta and spread series."""
+    df = df.asfreq(freq)
     yv, xv = df[y].values, df[x].values
     kf = KalmanFilter(
         n_dim_obs=1, n_dim_state=2,
@@ -115,10 +123,14 @@ def kalman_hedge(df, y, x):
     return {'kf_beta': beta, 'kf_spread': spread}
 
 
-def select_var_order(df, maxlags=10, trend='c'):
+def select_var_order(df, maxlags=10, trend='c', freq="B"):
     """
-    Multivariate time series df, fit VAR(p)
+    Multivariate time series df, fit VAR(p) for p=1..maxlags,
+    record AIC, BIC, HQIC, plus companion‐matrix eigenvalues.
+    freq: Frequency of the time series ('B' for business days, 'D' for calendar days)
     """
+    # Ensure frequency is set
+    df = df.asfreq(freq)
     records = []
     for p in range(1, maxlags+1):
         model = VAR(df)
