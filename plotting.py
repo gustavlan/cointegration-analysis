@@ -83,14 +83,40 @@ def plot_rolling_beta(strat_ret, window=126):
     plt.show()
 
 
-def plot_performance(strat_ret, sharpe_window=63, beta_window=126):
-    """
-    Generate all three standard performance charts for a strategy:
-    Drawdown, Rolling Sharpe, Rolling β vs SPX excess
-    """
-    plot_drawdown(strat_ret)
-    plot_rolling_sharpe(strat_ret, window=sharpe_window)
-    plot_rolling_beta(strat_ret, window=beta_window)
+def plot_performance(returns, sharpe_window=63, beta_window=126, pair_name=None):
+    """Plot strategy performance metrics in a single row of subplots."""
+    # Create figure with 3 subplots in a row
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+    fig.suptitle(f'Performance Metrics - {pair_name}', fontsize=14)
+    
+    # Calculate metrics
+    cumulative = (1 + returns).cumprod()
+    drawdown = cumulative / cumulative.cummax() - 1
+    rolling_sharpe = np.sqrt(252) * returns.rolling(sharpe_window).mean() / returns.rolling(sharpe_window).std()
+    rolling_beta = returns.rolling(beta_window).cov(returns) / returns.rolling(beta_window).var()
+    
+    # Plot 1: Drawdown
+    ax1.plot(drawdown, color='crimson', linewidth=1.5)
+    ax1.set_title('Strategy Drawdown')
+    ax1.set_ylabel('Drawdown %')
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Rolling Sharpe
+    ax2.plot(rolling_sharpe, color='darkblue', linewidth=1.5)
+    ax2.set_title(f'Rolling Sharpe ({sharpe_window}d)')
+    ax2.set_ylabel('Sharpe Ratio')
+    ax2.grid(True, alpha=0.3)
+    
+    # Plot 3: Rolling Beta
+    ax3.plot(rolling_beta, color='darkgreen', linewidth=1.5)
+    ax3.set_title(f'Rolling Beta ({beta_window}d)')
+    ax3.set_ylabel('Beta')
+    ax3.grid(True, alpha=0.3)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    return fig
 
 
 def analyze_pairs_nb(all_data, selected,
