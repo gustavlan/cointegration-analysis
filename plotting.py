@@ -89,11 +89,33 @@ def plot_performance(returns, sharpe_window=63, beta_window=126, pair_name=None)
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
     fig.suptitle(f'Performance Metrics - {pair_name}', fontsize=14)
     
-    # Calculate metrics
+    # Clean and prepare returns data
+    returns = returns.replace([np.inf, -np.inf], np.nan).fillna(0)
+    
+    # Calculate cumulative returns without using log
     cumulative = (1 + returns).cumprod()
-    drawdown = cumulative / cumulative.cummax() - 1
-    rolling_sharpe = np.sqrt(252) * returns.rolling(sharpe_window).mean() / returns.rolling(sharpe_window).std()
-    rolling_beta = returns.rolling(beta_window).cov(returns) / returns.rolling(beta_window).var()
+    
+    # Calculate drawdown
+    rolling_max = cumulative.expanding().max()
+    drawdown = (cumulative - rolling_max) / rolling_max
+    
+    # Calculate rolling metrics with handling for edge cases
+    rolling_mean = returns.rolling(sharpe_window, min_periods=1).mean()
+    rolling_std = returns.rolling(sharpe_window, min_periods=1).std()
+    rolling_sharpe = np.sqrt(252) * np.where(
+        rolling_std > 0,
+        rolling_mean / rolling_std,
+        0
+    )
+    
+    # Calculate rolling beta with safeguards
+    rolling_cov = returns.rolling(beta_window, min_periods=1).cov(returns)
+    rolling_var = returns.rolling(beta_window, min_periods=1).var()
+    rolling_beta = np.where(
+        rolling_var > 0,
+        rolling_cov / rolling_var,
+        0
+    )
     
     # Plot 1: Drawdown
     ax1.plot(drawdown, color='crimson', linewidth=1.5)
