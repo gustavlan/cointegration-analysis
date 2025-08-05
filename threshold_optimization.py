@@ -12,57 +12,51 @@ def backtest_spread(e: pd.Series,
                     cost: float = 0.0
                    ):
     """
-    Backtest a simple mean-reversion strategy on the spread e_t:
-      - Enter SHORT when e_t > mu + Z*sigma
-      - Enter LONG  when e_t < mu - Z*sigma
-      - Exit when e_t crosses mu
-    Returns a dict with N_trades, cum_PnL, avg_PnL, avg_duration.
+    Backtest a simple mean-reversion strategy on the spread e_t
     """
     upper = mu + Z * sigma
     lower = mu - Z * sigma
-
-    in_trade    = False
-    direction   = 0 # +1 for long, -1 for short
-    entry_idx   = None
-    entry_y     = entry_x = None
-
-    pnls        = []
-    durations   = []
-
-    for t in range(1, len(e)):
-        et = e.iloc[t]
-        idx = e.index[t]
-
+    
+    # Pre-calculate arrays for better performance
+    et = e.values
+    dates = e.index
+    pnls = []
+    durations = []
+    
+    in_trade = False
+    direction = 0
+    entry_idx = None
+    entry_y = entry_x = 0
+    
+    # Use numpy operations for better performance
+    for t in range(1, len(et)):
         if not in_trade:
-            if et > upper:
+            if et[t] > upper:
                 in_trade, direction = True, -1
-            elif et < lower:
+            elif et[t] < lower:
                 in_trade, direction = True, +1
             if in_trade:
-                entry_idx   = idx
-                entry_y     = y.loc[idx]
-                entry_x     = x.loc[idx]
+                entry_idx = dates[t]
+                entry_y = y.iloc[t]
+                entry_x = x.iloc[t]
         else:
-            # exit signal
-            if (direction == 1  and et >= mu) or (direction == -1 and et <= mu):
-                exit_y = y.loc[idx]
-                exit_x = x.loc[idx]
-                raw_pnl = direction * ((exit_y - entry_y) - beta * (exit_x - entry_x))
-                pnl = raw_pnl - cost
-                pnls.append(pnl)
-                durations.append((idx - entry_idx).days)
+            if (direction == 1 and et[t] >= mu) or (direction == -1 and et[t] <= mu):
+                exit_y = y.iloc[t]
+                exit_x = x.iloc[t]
+                pnls.append(direction * ((exit_y - entry_y) - beta * (exit_x - entry_x)) - cost)
+                durations.append((dates[t] - entry_idx).days)
                 in_trade = False
 
-    N          = len(pnls)
-    cum_PnL    = np.nansum(pnls)
-    avg_PnL    = np.nan if N == 0 else np.nanmean(pnls)
-    avg_dur    = np.nan if not durations else np.nanmean(durations)
-
+    N = len(pnls)
+    if N == 0:
+        return {'N_trades': 0, 'cum_PnL': 0, 'avg_PnL': np.nan, 'avg_duration': np.nan}
+        
+    pnls = np.array(pnls)  # Convert to numpy array for faster calculations
     return {
-        'N_trades':     N,
-        'cum_PnL':      cum_PnL,
-        'avg_PnL':      avg_PnL,
-        'avg_duration': avg_dur
+        'N_trades': N,
+        'cum_PnL': pnls.sum(),
+        'avg_PnL': pnls.mean(),
+        'avg_duration': np.mean(durations)
     }
 
 def optimize_thresholds(e: pd.Series,

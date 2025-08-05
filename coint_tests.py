@@ -16,9 +16,7 @@ warnings.filterwarnings(
 
 
 def matrix_ols_regression(y, X):
-    """
-    Performs OLS regression using matrix algebra with numpy.
-    """
+    """Performs OLS regression using matrix algebra with numpy."""
     try:
         # Using the OLS formula: beta = (X'X)^(-1) * X'y
         XTX = X.T @ X
@@ -27,7 +25,6 @@ def matrix_ols_regression(y, X):
         beta = XTX_inv @ XTY
         return beta
     except np.linalg.LinAlgError:
-        # Can happen if the matrix is singular (perfect multicollinearity)
         return None
 
 
@@ -205,30 +202,24 @@ def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
     return pd.DataFrame(records)
 
 def summarize_cointegration_tests(all_data: dict):
-    """
-    Perform univariate and cointegration tests on grouped asset series and collect results in a df.
-    """
+    """Perform cointegration tests more efficiently."""
     records = []
-
+    
     for group, df in all_data.items():
         # Univariate tests: ADF and KPSS for each asset
         for asset in df.columns:
-            adf_res = adf_results(df[asset])
-            kpss_res = kpss_results(df[asset])
+            series = df[asset]
+            adf_res = adf_results(series)
+            kpss_res = kpss_results(series)
             records.append({
-                'group': group,
-                'asset': asset,
-                **adf_res,
-                **kpss_res
+                'group': group, 'asset': asset,
+                **adf_res, **kpss_res
             })
-
-        # Determine number of assets for pair vs. triple logic
-        n_assets = df.shape[1]
-
+        
+        n_assets = len(df.columns)
         if n_assets == 2:
             y, x = df.columns
-
-            # Engle Granger two step cointegration
+            # Combine EG test and related calculations
             eg = engle_granger(df, y, x)
             records.append({
                 'group': group,
