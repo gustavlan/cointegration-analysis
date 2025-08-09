@@ -28,24 +28,33 @@ def backtest_spread(e: pd.Series,
     entry_idx = None
     entry_y = entry_x = 0
     
-    # Use numpy operations for better performance
+    # Vectorized signal detection
+    long_signals = et < lower
+    short_signals = et > upper
+    exit_signals = np.abs(et - mu) <= np.abs(et - mu).min()  # exit when closest to mean
+    
+    # Process trades using state machine with vectorized operations
+    position = np.zeros(len(et))
     for t in range(1, len(et)):
-        if not in_trade:
-            if et[t] > upper:
-                in_trade, direction = True, -1
-            elif et[t] < lower:
-                in_trade, direction = True, +1
-            if in_trade:
+        if position[t-1] == 0:  # Not in trade
+            if short_signals[t]:
+                position[t] = -1
                 entry_idx = dates[t]
-                entry_y = y.iloc[t]
-                entry_x = x.iloc[t]
-        else:
-            if (direction == 1 and et[t] >= mu) or (direction == -1 and et[t] <= mu):
-                exit_y = y.iloc[t]
-                exit_x = x.iloc[t]
-                pnls.append(direction * ((exit_y - entry_y) - beta * (exit_x - entry_x)) - cost)
+                entry_y, entry_x = y.iloc[t], x.iloc[t]
+            elif long_signals[t]:
+                position[t] = 1
+                entry_idx = dates[t] 
+                entry_y, entry_x = y.iloc[t], x.iloc[t]
+        else:  # In trade
+            position[t] = position[t-1]  # Maintain position
+            # Exit on mean reversion
+            if ((position[t-1] == 1 and et[t] >= mu) or 
+                (position[t-1] == -1 and et[t] <= mu)):
+                exit_y, exit_x = y.iloc[t], x.iloc[t]
+                pnl = position[t-1] * ((exit_y - entry_y) - beta * (exit_x - entry_x)) - cost
+                pnls.append(pnl)
                 durations.append((dates[t] - entry_idx).days)
-                in_trade = False
+                position[t] = 0
 
     N = len(pnls)
     if N == 0:
@@ -68,19 +77,32 @@ def optimize_thresholds(e: pd.Series,
                         Z_min: float = 0.5,
                         Z_max: float = 3.0,
                         dZ: float   = 0.1,
-                        cost: float = 0.0
+                        cost: float = 0.0,
+                        ou_mu: float = None,
+                        ou_sigma: float = None,
+                        use_ou: bool = False
                        ):
     """
     Sweep Z from Z_min to Z_max in steps of dZ,
     backtest each, and return a df of results.
+    If use_ou=True and ou_mu/ou_sigma provided, use OU equilibrium parameters.
+    Otherwise use the provided sample mu/sigma.
     """
+    # Use OU parameters if specified and available
+    if use_ou and ou_mu is not None and ou_sigma is not None:
+        final_mu = ou_mu
+        final_sigma = ou_sigma
+    else:
+        final_mu = mu
+        final_sigma = sigma
+    
     Zs = np.arange(Z_min, Z_max + dZ, dZ)
-    records = []
-
-    for Z in Zs:
-        stats = backtest_spread(e, mu, sigma, beta, y, x, Z, cost)
-        stats['Z'] = Z
-        records.append(stats)
+    
+    # Vectorized threshold optimization using list comprehension
+    records = [
+        {**backtest_spread(e, final_mu, final_sigma, beta, y, x, Z, cost), 'Z': Z}
+        for Z in Zs
+    ]
 
     return pd.DataFrame(records)
 

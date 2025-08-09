@@ -9,7 +9,8 @@ def fetch_asset_data(asset_groups: dict,
                     ):
     all_data = {}
 
-    for group_name, tickers in asset_groups.items():
+    # Vectorized processing using dictionary comprehension
+    def fetch_group_data(group_name, tickers):
         try:
             raw = yf.download(
                 tickers,
@@ -37,10 +38,15 @@ def fetch_asset_data(asset_groups: dict,
             price = price.ffill().dropna()
             price = price.asfreq(freq, method='ffill')
             
-            if not price.empty:
-                all_data[group_name] = price
+            return price if not price.empty else None
+        except Exception:
+            return None
 
-        except Exception as e:
-            continue
+    # Process all groups and filter out None results  
+    all_data = {
+        group_name: data 
+        for group_name, tickers in asset_groups.items() 
+        if (data := fetch_group_data(group_name, tickers)) is not None
+    }
 
     return all_data

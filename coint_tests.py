@@ -28,10 +28,13 @@ def matrix_ols_regression(y, X):
         return None
 
 
-def adf_results(series, freq="B"):
+def adf_results(series, freq="B", verbose=False):
     """Returns ADF test outputs."""
     series = series.asfreq(freq)
     stat, pval, _, _, crit, _ = adfuller(series.dropna(), autolag='AIC')
+    # Micro-decision print for ADF
+    if verbose:
+        print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
     return {
         'stat': stat,
         'pvalue': pval,
@@ -39,26 +42,65 @@ def adf_results(series, freq="B"):
     }
 
 
-def kpss_results(series, freq="B"):
+def kpss_results(series, freq="B", verbose=False):
     """Returns KPSS test outputs."""
     series = series.asfreq(freq)
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
+    # Micro-decision print for KPSS
+    if verbose:
+        print(f"KPSS(p={pval:.3f}) → {'non-stationary' if pval < 0.05 else 'stationary'}")
     return {
         'stat': stat,
         'pvalue': pval,
         **{f'crit_{k}': v for k, v in crit.items()}
     }
 
-def engle_granger(df, y, x, freq="B"):
+def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
     """Returns hedge ratio and ADF p-value on residuals, plus spread if cointegrated."""
     # Ensure frequency is set
     df = df.asfreq(freq)
     x0 = sm.add_constant(df[x])
     model = sm.OLS(df[y], x0).fit()
     beta = model.params[x]
-    spread = df[y] - beta * df[x]
-    pval = adfuller(spread.dropna(), maxlag=1, autolag=None)[1]
-    return {'beta': beta, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None}
+    alpha = model.params['const']
+    spread = model.resid  # Use model residuals to include intercept
+    pval = adfuller(spread.dropna(), maxlag=maxlag, autolag=None)[1]
+    # Optional print for ADF on residuals
+    if verbose:
+        print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
+    return {'beta': beta, 'alpha': alpha, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None, 'maxlag': maxlag}
+
+
+def engle_granger_bidirectional(df, a, b, maxlag=1, freq="B", verbose=False):
+    """
+    Run EG in both directions; keep the residual with the lower p-value.
+    Returns results w.r.t. 'a' as dependent variable.
+    """
+    r_ab = engle_granger(df, a, b, maxlag=maxlag, freq=freq, verbose=verbose)
+    r_ba = engle_granger(df, b, a, maxlag=maxlag, freq=freq, verbose=verbose)
+    
+    if r_ab['eg_pvalue'] <= r_ba['eg_pvalue']:
+        return r_ab
+    
+    # Convert back to a spread defined as a - beta*b - alpha
+    # Need to recompute spread with proper intercept
+    df = df.asfreq(freq)
+    x0 = sm.add_constant(df[a])
+    model_ba = sm.OLS(df[b], x0).fit()
+    beta_ba = model_ba.params[a]
+    alpha_ba = model_ba.params['const']
+    
+    beta_ab = 1.0 / beta_ba if beta_ba != 0 else np.nan
+    alpha_ab = -alpha_ba / beta_ba if beta_ba != 0 else np.nan
+    spread = df[a] - beta_ab * df[b] - alpha_ab if np.isfinite(beta_ab) and np.isfinite(alpha_ab) else None
+    
+    return {
+        'beta': float(beta_ab), 
+        'alpha': float(alpha_ab),
+        'eg_pvalue': float(r_ba['eg_pvalue']), 
+        'spread': spread, 
+        'maxlag': int(maxlag)
+    }
 
 
 def analyze_error_correction_model(y, x, spread, freq="B"):
@@ -90,16 +132,33 @@ def ou_params(spread, freq="B"):
     mu = model.params['const'] / theta
     hl = np.log(2) / theta
     sigma_eq = spread.std()
-    return {'ou_mu': mu, 'ou_theta': theta, 'ou_halflife': hl, 'ou_sigma': sigma_eq}
+    return {'ou_mu': mu, 'ou_theta': theta, 'OU_HalfLife': hl, 'ou_sigma': sigma_eq}
 
 
-def johansen(df, freq="B"):
-    """Returns number of coint relationships and eigenvector for first."""
-    df = df.asfreq(freq)
-    res = coint_johansen(df.dropna(), det_order=0, k_ar_diff=1)
+def johansen(df, freq="B", det_order=0):
+    """
+    Run Johansen cointegration test with adaptive lag selection.
+    Returns dict with 'johansen_n' and leading eigenvector weights as 'eig_0', 'eig_1', ...
+    """
+    df = df.asfreq(freq).dropna()
+    try:
+        var_table, best_aic, best_bic, best_hqic = select_var_order(df)
+        p = int(np.median([best_aic, best_bic, best_hqic]))
+        k_ar_diff = max(p - 1, 1)
+    except Exception:
+        k_ar_diff = 1
+    res = coint_johansen(df.values, det_order=det_order, k_ar_diff=k_ar_diff)
     n = np.sum(res.lr1 > res.cvt[:, 1])
     vec = res.evec[:, 0]
-    return {'johansen_n': int(n), **{f'eig_{i}': v for i, v in enumerate(vec)}}
+    out = {'johansen_n': int(n)}  # trace test at 5%
+    # Leading eigenvector
+    if res.evec is not None and res.evec.shape[1] > 0:
+        v = res.evec[:, 0]
+        for i, w in enumerate(v):
+            out[f'eig_{i}'] = float(w)
+    out['k_ar_diff_used'] = int(k_ar_diff)
+    out['det_order'] = int(det_order)
+    return out
 
 def kalman_hedge(df, y, x, freq="B"):
     """Returns dynamic beta and spread series."""
@@ -278,7 +337,7 @@ def run_pair_backtests(
     """
     Run nested cross-validation backtests on cointegrated pairs.
     """
-    results = {}
+    results = []
 
     for pair in selected:
         df = all_data[pair]
@@ -306,6 +365,205 @@ def run_pair_backtests(
             step_months=step_months
         )
 
-        results[pair] = cv_df
+        # Add pair column and append to results
+        cv_df['pair'] = pair
+        results.append(cv_df)
 
-    return results
+    return pd.concat(results, ignore_index=True) if results else pd.DataFrame()
+
+
+def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
+    """
+    Split into n_periods windows and run full ECM per window.
+    Returns (results_df, summary_dict).
+    """
+    def process_subperiod(sub, y_col, x_col, maxlag):
+        """Helper function to process a single subperiod."""
+        try:
+            eg = engle_granger(sub, y_col, x_col, maxlag=maxlag, verbose=False)
+            spread = eg.get('spread')
+            if spread is None or spread.isna().all():
+                return None
+            ecm = analyze_error_correction_model(sub[y_col], sub[x_col], spread)
+            return {
+                'Period': f"{sub.index.min():%Y-%m-%d} to {sub.index.max():%Y-%m-%d}",
+                'β_ec': ecm.get('ecm_coeff', np.nan),
+                'p_value': ecm.get('ecm_pvalue', np.nan),
+                'Cointegrated?': 'Yes' if (ecm.get('ecm_pvalue', 1.0) < 0.05 and ecm.get('ecm_coeff', 0.0) < 0.0) else 'No',
+                'n_obs': len(sub)
+            }
+        except Exception:
+            return None
+
+    df_clean = df[[y_col, x_col]].dropna()
+    n = len(df_clean)
+    w = n // n_periods if n_periods > 0 else n
+    
+    # Vectorized subperiod analysis using list comprehension
+    rows = [
+        process_subperiod(df_clean.iloc[i*w:(i+1)*w], y_col, x_col, maxlag)
+        for i in range(n_periods)
+        if len(df_clean.iloc[i*w:(i+1)*w]) >= max(60, w // 2)
+    ]
+    
+    # Filter out None results and create DataFrame
+    rows = [row for row in rows if row is not None]
+    results_df = pd.DataFrame(rows)
+    overall_stable = bool((results_df['Cointegrated?'] == 'Yes').all()) if not results_df.empty else False
+    summary = {
+        'overall_stable': overall_stable,
+        'n_windows': int(len(results_df)),
+        'n_yes': int((results_df['Cointegrated?'] == 'Yes').sum()) if not results_df.empty else 0
+    }
+    return results_df, summary
+
+
+def za_test(series, trim=0.1, lags=None):
+    """Zivot-Andrews unit-root test with structural break."""
+    try:
+        from arch.unitroot import ZivotAndrews
+        s = series.dropna()
+        if len(s) < 50:
+            return {'stat': None, 'pvalue': None, 'breakpoint': None}
+        
+        if lags is None:
+            res = ZivotAndrews(s, trim=trim, trend='ct')
+        else:
+            res = ZivotAndrews(s, trim=trim, lags=lags, trend='ct')
+            
+        breakpoint = getattr(res, 'breakpoint', None)
+        return {'stat': res.stat, 'pvalue': res.pvalue, 'breakpoint': breakpoint}
+    except (ImportError, Exception):
+        return {'stat': None, 'pvalue': None, 'breakpoint': None}
+
+
+def analyze_regression_var_summary(all_data):
+    """
+    Analyze regression R² and VAR model order selection for all data groups.
+    
+    Returns:
+        DataFrame with regression and VAR analysis results
+    """
+    reg_var_summary = []
+    for name, df in all_data.items():
+        y = df.iloc[:,0]
+        X = sm.add_constant(df.iloc[:,1:])
+        beta = matrix_ols_regression(y.values, X.values)
+        preds = X.values @ beta
+        r2 = 1 - ((y.values - preds)**2).sum() / ((y.values - y.mean())**2).sum()
+
+        var_df, best_aic, best_bic, best_hqic = select_var_order(df.dropna())
+        eigvals = var_df.loc[var_df['lag']==best_aic, 'eigenvalues'].iloc[0]
+        eigvals_magnitude = [np.abs(x) for x in eigvals]
+        eigvals_str = ' '.join([f'{abs(x):.3f}' for x in eigvals_magnitude])
+
+        reg_var_summary.append({
+            'group': name,
+            'r_squared': r2,
+            'best_aic': best_aic,
+            'best_bic': best_bic,
+            'best_hqic': best_hqic,
+            'eigenvalues': eigvals_str
+        })
+    return pd.DataFrame(reg_var_summary)
+
+
+def analyze_stability_across_classes(all_data, reg_var_summary):
+    """
+    Run stability check for pairs organized by asset class.
+    
+    Returns:
+        Tuple of (stability_results, stability_summaries, stable_pairs, unstable_pairs, stability_rate)
+    """
+    stability_results = {}
+    stability_summaries = {}
+
+    # Group pairs by asset class for organized display
+    asset_classes = {
+        'Commodities': ['oil_pair', 'agri_pair'],
+        'Fixed Income & Currency': ['yield_pair', 'currency_pair'], 
+        'Volatility': ['volatility_pair'],
+        'Country Indices': ['eu_index_pair_1', 'eu_index_pair_2'],
+        'Equities': ['fr_banking_pair', 'fast_fashion_pair', 'investor_ab_pair', 'vw_porsche_pair', 'semiconductor_pair'],
+        'ETFs': ['sector_etf_pair']
+    }
+
+    # Vectorized stability analysis using dictionary comprehension
+    stability_results = {}
+    stability_summaries = {}
+    
+    # Flatten nested loops using nested comprehension
+    pair_analysis_data = [
+        (asset_class, pair_name, all_data[pair_name])
+        for asset_class, pair_list in asset_classes.items()
+        for pair_name in pair_list
+        if pair_name in all_data and pair_name.endswith('_pair') and len(all_data[pair_name].columns) >= 2
+    ]
+    
+    for asset_class, pair_name, df in pair_analysis_data:
+        y_col, x_col = df.columns[0], df.columns[1]
+        try:
+            results_df, summary = multi_subperiod_stability_check(df, y_col, x_col)
+            stability_results[pair_name] = results_df
+            stability_summaries[pair_name] = summary
+        except Exception:
+            continue
+
+    # Vectorized classification using list comprehensions  
+    stable_pairs = [name for name, summary in stability_summaries.items() if summary.get('overall_stable', False)]
+    unstable_pairs = [name for name, summary in stability_summaries.items() if not summary.get('overall_stable', False)]
+
+    stability_rate = len(stable_pairs)/len(stability_summaries)*100 if stability_summaries else 0
+    return stability_results, stability_summaries, stable_pairs, unstable_pairs, stability_rate
+
+
+def analyze_johansen_triples(all_data):
+    """
+    Perform Johansen multivariate cointegration test for triple groups.
+    
+    Returns:
+        DataFrame with Johansen test results for triples
+    """
+    triple_groups = [k for k in all_data.keys() if 'triple' in k.lower()]
+
+    if triple_groups:
+        johansen_summary = []
+        
+        for triple_name in triple_groups:
+            df_triple = all_data[triple_name].dropna()
+            
+            if len(df_triple.columns) >= 3 and len(df_triple) > 100:
+                try:
+                    johansen_result = johansen(df_triple)
+                    n_coint = johansen_result['johansen_n']
+                    first_eigenvec = [johansen_result.get(f'eig_{i}', 0) for i in range(len(df_triple.columns))]
+                    
+                    # Create a simple spread using first eigenvector
+                    if n_coint > 0:
+                        spread_triple = sum(first_eigenvec[i] * df_triple.iloc[:, i] for i in range(len(first_eigenvec)))
+                        spread_vol = spread_triple.std()
+                    else:
+                        spread_vol = np.nan
+                    
+                    johansen_summary.append({
+                        'triple': triple_name,
+                        'n_assets': len(df_triple.columns),
+                        'n_coint_relations': n_coint,
+                        'first_eigenvec_norm': np.linalg.norm(first_eigenvec),
+                        'spread_vol': spread_vol,
+                        'data_points': len(df_triple)
+                    })
+                    
+                except Exception:
+                    johansen_summary.append({
+                        'triple': triple_name,
+                        'n_assets': len(df_triple.columns),
+                        'n_coint_relations': None,
+                        'first_eigenvec_norm': None,
+                        'spread_vol': None,
+                        'data_points': len(df_triple)
+                    })
+        
+        return pd.DataFrame(johansen_summary)
+    else:
+        return pd.DataFrame()  # Empty DataFrame if no triples
