@@ -36,19 +36,37 @@ def _fetch_benchmarks(index):
     Download S&P 500 (^GSPC) and 3M T-bill (^IRX),
     compute daily excess returns, and align to index.
     """
-    start, end = index.min(), index.max()
-    spx = yf.download('^GSPC', start=start, end=end, auto_adjust=True)['Close']
-    irx = yf.download('^IRX', start=start, end=end, auto_adjust=True)['Close']
+    try:
+        start, end = index.min(), index.max()
+        spx_data = yf.download('^GSPC', start=start, end=end, auto_adjust=True, progress=False)
+        irx_data = yf.download('^IRX', start=start, end=end, auto_adjust=True, progress=False)
 
-    spx_ret = spx.pct_change()
-    spx_ret.name = 'spx_ret'
-    rf_daily = ((1 + irx/100) ** (1/252) - 1) # Convert annual yield% to daily risk-free rate
-    rf_daily.name = 'rf'
-    df = pd.concat([spx_ret, rf_daily], axis=1).dropna()
-    excess = df.iloc[:, 0] - df.iloc[:, 1]
-    excess.name = 'spx_exc'
+        # Check if downloads were successful and extract Close data
+        if len(spx_data) == 0 or len(irx_data) == 0 or 'Close' not in spx_data.columns or 'Close' not in irx_data.columns:
+            raise ValueError('Downloaded data is empty or missing Close column')
+        
+        spx = spx_data['Close']
+        irx = irx_data['Close']
+        
+        # Ensure we got Series, not DataFrames (handle MultiIndex case)
+        if isinstance(spx, pd.DataFrame):
+            spx = spx.iloc[:, 0]  # Take first column if it's a DataFrame
+        if isinstance(irx, pd.DataFrame):
+            irx = irx.iloc[:, 0]  # Take first column if it's a DataFrame
 
-    return excess.reindex(index).dropna()
+        spx_ret = spx.pct_change()
+        spx_ret.name = 'spx_ret'
+        rf_daily = ((1 + irx/100) ** (1/252) - 1) # Convert annual yield% to daily risk-free rate
+        rf_daily.name = 'rf'
+        df = pd.concat([spx_ret, rf_daily], axis=1).dropna()
+        excess = df.iloc[:, 0] - df.iloc[:, 1]
+        excess.name = 'spx_exc'
+
+        return excess.reindex(index).dropna()
+    except Exception as e:
+        print(f"Warning: Could not fetch benchmark data: {e}")
+        # Return a zero series aligned to the index if download fails
+        return pd.Series(0, index=index, name='spx_exc')
 
 
 def plot_drawdown(strat_ret):
@@ -143,8 +161,22 @@ def plot_performance(returns, sharpe_window=63, beta_window=126, pair_name=None,
         start, end = returns.index.min(), returns.index.max()
         
         # Fetch market and risk-free data
-        market = yf.download(market_ticker, start=start, end=end, auto_adjust=True, progress=False)['Close']
-        rf_rate = yf.download(risk_free_ticker, start=start, end=end, auto_adjust=True, progress=False)['Close']
+        market_data = yf.download(market_ticker, start=start, end=end, auto_adjust=True, progress=False)
+        rf_data = yf.download(risk_free_ticker, start=start, end=end, auto_adjust=True, progress=False)
+        
+        # Check if downloads were successful and extract Close data
+        if (len(market_data) == 0 or len(rf_data) == 0 or 
+            'Close' not in market_data.columns or 'Close' not in rf_data.columns):
+            raise ValueError('Downloaded market data is empty or missing Close column')
+        
+        market = market_data['Close']
+        rf_rate = rf_data['Close']
+        
+        # Ensure we got Series, not DataFrames (handle MultiIndex case)
+        if isinstance(market, pd.DataFrame):
+            market = market.iloc[:, 0]  # Take first column if it's a DataFrame
+        if isinstance(rf_rate, pd.DataFrame):
+            rf_rate = rf_rate.iloc[:, 0]  # Take first column if it's a DataFrame
         
         # Calculate market returns and risk-free rate
         market_ret = market.pct_change().fillna(0)

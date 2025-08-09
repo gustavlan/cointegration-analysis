@@ -131,16 +131,16 @@ def backtest_pair_with_stops(
     x_col: str = None,
     beta: float = None,
     spread_col: str = 'spread',
-    z_entry: float = 1.5,
-    z_exit: float = 0.0,
-    z_window: int = 126,
-    stop_z: float = None,             # hard stop in Z units (adverse move)
-    stop_loss_sigma: float = None,    # exit if loss > k * sigma_at_entry
-    equity_dd_stop: float = None,     # flatten if equity DD >= threshold
-    cool_off_days: int = 20,          # pause trading after DD breach
-    max_holding_days: int = None,     # time stop
-    cost: float = 0.0,                # per unit turnover cost in spread units
-    clip_return: float = 0.50         # hard clip of daily return for numerical safety
+    z_entry: float = 1.8,         # Wider entry band (was 1.5)
+    z_exit: float = 0.3,          # Wider exit band (was 0.0)
+    z_window: int = 252,          # Longer lookback (was 126)
+    stop_z: float = None,         # Hard stop in Z units (adverse move)
+    stop_loss_sigma: float = None, # Exit if loss > k * sigma_at_entry
+    equity_dd_stop: float = None,  # Disable global halt by default (was 0.20)
+    cool_off_days: int = 20,      # Pause trading after DD breach
+    max_holding_days: int = None, # Time stop
+    cost: float = 0.0,            # Per unit turnover cost in spread units
+    clip_return: float = 0.50     # Hard clip of daily return for numerical safety
 ) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     Stateful pairs backtest with Z-entry/exit, hard Z stop, per-trade loss stop,
@@ -167,6 +167,9 @@ def backtest_pair_with_stops(
     z = _rolling_zscore(spread, window=z_window).copy()
     sigma = _rolling_sigma(spread, window=z_window).reindex(idx)
 
+    # Add warm-up period to avoid trading with unstable statistics
+    warm_up_days = max(z_window, 252)  # At least 1 year or z_window, whichever is larger
+    
     dS = spread.diff().fillna(0.0)
     signals = pd.Series(0, index=idx, dtype=int)
     returns = pd.Series(0.0, index=idx, dtype=float)
@@ -188,6 +191,12 @@ def backtest_pair_with_stops(
         z_t = z.iloc[t]
         s_t = spread.iloc[t]
         dS_t = dS.iloc[t]
+
+        # Skip trading during warm-up period
+        if t < warm_up_days:
+            signals.iloc[t] = 0
+            returns.iloc[t] = 0.0
+            continue
 
         # DD circuit breaker: pause trading
         just_ended_cooloff = False
@@ -301,12 +310,12 @@ def backtest_pair_with_vol_targeting(
     x_col: str = None,
     beta: float = None,
     spread_col: str = 'spread',
-    z_entry: float = 1.5,
-    z_exit: float = 0.25,
-    z_window: int = 126,
+    z_entry: float = 1.8,         # Wider entry band (was 1.5)
+    z_exit: float = 0.3,          # Wider exit band (was 0.25)
+    z_window: int = 252,          # Longer lookback (was 126)
     stop_z: float = None,
     stop_loss_sigma: float = None,
-    equity_dd_stop: float = None,
+    equity_dd_stop: float = None,  # Disable global halt by default
     cool_off_days: int = 20,
     max_holding_days: int = None,
     cost: float = 0.002,
@@ -336,6 +345,9 @@ def backtest_pair_with_vol_targeting(
     sigma = _rolling_sigma(spread, window=z_window).reindex(idx)
     dS = spread.diff().fillna(0.0)
 
+    # Add warm-up period to avoid trading with unstable statistics
+    warm_up_days = max(z_window, vol_window, 252)  # At least 1 year or max window
+    
     # Realized vol of spread increments
     dS_vol = dS.rolling(vol_window, min_periods=max(10, vol_window // 3)).std().replace(0, np.nan)
     size = (target_vol / (dS_vol + _EPS)).clip(upper=max_leverage)  # unitless leverage
@@ -359,6 +371,13 @@ def backtest_pair_with_vol_targeting(
         z_t = z.iloc[t]
         s_t = spread.iloc[t]
         dS_t = dS.iloc[t]
+
+        # Skip trading during warm-up period
+        if t < warm_up_days:
+            signals.iloc[t] = 0
+            sized_pos.iloc[t] = 0.0
+            returns.iloc[t] = 0.0
+            continue
 
         # Pause trading on DD
         just_ended_cooloff = False
@@ -801,9 +820,10 @@ def run_individual_pair_backtests(selected, all_data, summary_df, guarded_return
         r, sig, z = backtest_pair_with_stops(
             df_pair=df_with_spread,
             z_entry=best_Z,
-            z_exit=0.1,
-            stop_z=3.0,
-            equity_dd_stop=0.15,
+            z_exit=0.2,               # Slightly wider exit
+            z_window=252,             # Longer lookback window
+            stop_z=None,              # No hard Z-stop to avoid premature exits
+            equity_dd_stop=None,      # No global halt
             cost=0.002
         )
         return r
@@ -872,6 +892,12 @@ def run_guarded_backtests(selected, all_data, backtest_type='stops'):
     """
     Run guarded backtests with improved risk management parameters.
     
+    Key improvements to fix catastrophic drawdown/flat performance issues:
+    1. Removed global trading halt (equity_dd_stop=None) - now only per-trade stops
+    2. Wider Z-bands (1.8 vs 1.5) and longer lookback (252 vs 126) to avoid whipsaws
+    3. Added warm-up period to avoid trading with unstable statistics
+    4. Use dropna() instead of fillna(0) on returns to avoid artificial flat periods
+    
     Parameters:
         backtest_type: 'stops' or 'vol_targeted'
     
@@ -891,22 +917,22 @@ def run_guarded_backtests(selected, all_data, backtest_type='stops'):
         df_bt = pd.DataFrame({'spread': spread})
 
         if backtest_type == 'stops':
-            # Stops only (fixed parameters to avoid unit mismatch and sticky trades)
+            # Stops only (improved parameters to avoid premature stops and global halts)
             r, sig, z = backtest_pair_with_stops(
                 df_bt,
                 spread_col='spread',
-                z_entry=1.5, z_exit=0.25, z_window=126,
-                stop_z=2.5,
-                stop_loss_sigma=2.0,
-                equity_dd_stop=0.20,
+                z_entry=1.8, z_exit=0.3, z_window=252,  # Wider bands, longer lookback
+                stop_z=3.5,                              # More room before hard stop
+                stop_loss_sigma=3.0,                     # Looser per-trade stop
+                equity_dd_stop=None,                     # Disable global halt mechanism
                 cost=0.002
             )
         elif backtest_type == 'vol_targeted':
             r, sig, z = backtest_pair_with_vol_targeting(
                 df_bt,
                 spread_col='spread',
-                z_entry=1.5, z_exit=0.25, z_window=126,
-                target_vol=0.12,
+                z_entry=1.8, z_exit=0.3, z_window=252,  # Wider bands, longer lookback
+                target_vol=0.08,                         # Lower target vol (was 0.12)
                 cost=0.002
             )
         else:
