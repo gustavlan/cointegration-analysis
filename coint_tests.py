@@ -46,7 +46,6 @@ def kpss_results(series, freq="B", verbose=False):
     """Returns KPSS test outputs."""
     series = series.asfreq(freq)
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
-    # Micro-decision print for KPSS
     if verbose:
         print(f"KPSS(p={pval:.3f}) → {'non-stationary' if pval < 0.05 else 'stationary'}")
     return {
@@ -65,7 +64,6 @@ def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
     alpha = model.params['const']
     spread = model.resid  # Use model residuals to include intercept
     pval = adfuller(spread.dropna(), maxlag=maxlag, autolag=None)[1]
-    # Optional print for ADF on residuals
     if verbose:
         print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
     return {'beta': beta, 'alpha': alpha, 'eg_pvalue': pval, 'spread': spread if pval <= .05 else None, 'maxlag': maxlag}
@@ -115,7 +113,7 @@ def analyze_error_correction_model(y, x, spread, freq="B"):
     X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']]) # regress on error term
     y_ecm = aligned_data['delta_y']
     model = sm.OLS(y_ecm, X_ecm).fit()
-    ec_coeff = model.params['ec_term'] # extract results
+    ec_coeff = model.params['ec_term']
     ec_pvalue = model.pvalues['ec_term']
     
     return {'ecm_coeff': ec_coeff, 'ecm_pvalue': ec_pvalue}
@@ -138,7 +136,6 @@ def ou_params(spread, freq="B"):
 def johansen(df, freq="B", det_order=0):
     """
     Run Johansen cointegration test with adaptive lag selection.
-    Returns dict with 'johansen_n' and leading eigenvector weights as 'eig_0', 'eig_1', ...
     """
     df = df.asfreq(freq).dropna()
     try:
@@ -181,9 +178,7 @@ def kalman_hedge(df, y, x, freq="B"):
 
 def select_var_order(df, maxlags=10, trend='c', freq="B"):
     """
-    Multivariate time series df, fit VAR(p) for p=1..maxlags,
-    record AIC, BIC, HQIC, plus companion‐matrix eigenvalues.
-    freq: Frequency of the time series ('B' for business days, 'D' for calendar days)
+    Multivariate time series df, fit VAR(p) for p=1..maxlags
     """
     # Ensure frequency is set
     df = df.asfreq(freq)
@@ -265,7 +260,6 @@ def summarize_cointegration_tests(all_data: dict):
     records = []
     
     for group, df in all_data.items():
-        # Univariate tests: ADF and KPSS for each asset
         for asset in df.columns:
             series = df[asset]
             adf_res = adf_results(series)
@@ -375,7 +369,6 @@ def run_pair_backtests(
 def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
     """
     Split into n_periods windows and run full ECM per window.
-    Returns (results_df, summary_dict).
     """
     def process_subperiod(sub, y_col, x_col, maxlag):
         """Helper function to process a single subperiod."""
@@ -439,10 +432,7 @@ def za_test(series, trim=0.1, lags=None):
 
 def analyze_regression_var_summary(all_data):
     """
-    Analyze regression R² and VAR model order selection for all data groups.
-    
-    Returns:
-        DataFrame with regression and VAR analysis results
+    Analyze regression R^2 and VAR model order selection for all data groups.
     """
     reg_var_summary = []
     for name, df in all_data.items():
@@ -471,14 +461,10 @@ def analyze_regression_var_summary(all_data):
 def analyze_stability_across_classes(all_data, reg_var_summary):
     """
     Run stability check for pairs organized by asset class.
-    
-    Returns:
-        Tuple of (stability_results, stability_summaries, stable_pairs, unstable_pairs, stability_rate)
     """
     stability_results = {}
     stability_summaries = {}
 
-    # Group pairs by asset class for organized display
     asset_classes = {
         'Commodities': ['oil_pair', 'agri_pair'],
         'Fixed Income & Currency': ['yield_pair', 'currency_pair'], 
@@ -488,11 +474,10 @@ def analyze_stability_across_classes(all_data, reg_var_summary):
         'ETFs': ['sector_etf_pair']
     }
 
-    # Vectorized stability analysis using dictionary comprehension
     stability_results = {}
     stability_summaries = {}
     
-    # Flatten nested loops using nested comprehension
+    # Flatten nested loops
     pair_analysis_data = [
         (asset_class, pair_name, all_data[pair_name])
         for asset_class, pair_list in asset_classes.items()
@@ -509,7 +494,6 @@ def analyze_stability_across_classes(all_data, reg_var_summary):
         except Exception:
             continue
 
-    # Vectorized classification using list comprehensions  
     stable_pairs = [name for name, summary in stability_summaries.items() if summary.get('overall_stable', False)]
     unstable_pairs = [name for name, summary in stability_summaries.items() if not summary.get('overall_stable', False)]
 
@@ -520,9 +504,6 @@ def analyze_stability_across_classes(all_data, reg_var_summary):
 def analyze_johansen_triples(all_data):
     """
     Perform Johansen multivariate cointegration test for triple groups.
-    
-    Returns:
-        DataFrame with Johansen test results for triples
     """
     triple_groups = [k for k in all_data.keys() if 'triple' in k.lower()]
 
@@ -538,7 +519,7 @@ def analyze_johansen_triples(all_data):
                     n_coint = johansen_result['johansen_n']
                     first_eigenvec = [johansen_result.get(f'eig_{i}', 0) for i in range(len(df_triple.columns))]
                     
-                    # Create a simple spread using first eigenvector
+                    # Create spread using first eigenvector
                     if n_coint > 0:
                         spread_triple = sum(first_eigenvec[i] * df_triple.iloc[:, i] for i in range(len(first_eigenvec)))
                         spread_vol = spread_triple.std()
