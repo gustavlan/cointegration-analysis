@@ -392,7 +392,6 @@ def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
     n = len(df_clean)
     w = n // n_periods if n_periods > 0 else n
     
-    # Vectorized subperiod analysis using list comprehension
     rows = [
         process_subperiod(df_clean.iloc[i*w:(i+1)*w], y_col, x_col, maxlag)
         for i in range(n_periods)
