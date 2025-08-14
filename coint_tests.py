@@ -457,13 +457,84 @@ def analyze_regression_var_summary(all_data):
     return pd.DataFrame(reg_var_summary)
 
 
-def analyze_stability_across_classes(all_data, reg_var_summary):
+def multi_subperiod_stability_check_fixed(df, y_col, x_col, n_periods=5):
+    """
+    Split data into exactly n_periods equal length periods and test each.
+    Always calculates β_ec regardless of significance.
+    """
+    results = []
+    
+    # Calculate period length
+    total_obs = len(df)
+    period_length = total_obs // n_periods
+    
+    for i in range(n_periods):
+        start_idx = i * period_length
+        if i == n_periods - 1:  # Last period gets any remaining observations
+            end_idx = total_obs
+        else:
+            end_idx = (i + 1) * period_length
+            
+        period_data = df.iloc[start_idx:end_idx]
+        
+        if len(period_data) < 30:  # Minimum observations check
+            # Still add a row to maintain period count
+            start_date = period_data.index[0].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
+            end_date = period_data.index[-1].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
+            
+            results.append({
+                'Period': f"{start_date} to {end_date}",
+                'β_ec': np.nan,
+                'p_value': np.nan,
+                'Cointegrated?': 'No',
+                'n_obs': len(period_data)
+            })
+            continue
+            
+        try:
+            # Run Engle-Granger test
+            eg_result = engle_granger(period_data, y_col, x_col)
+            
+            # Run ECM to get β_ec - ALWAYS calculate this
+            ecm_result = analyze_error_correction_model(
+                period_data[y_col], 
+                period_data[x_col], 
+                eg_result['spread']
+            )
+            
+            start_date = period_data.index[0].strftime('%Y-%m-%d')
+            end_date = period_data.index[-1].strftime('%Y-%m-%d')
+            
+            # Always include β_ec, mark significance separately
+            results.append({
+                'Period': f"{start_date} to {end_date}",
+                'β_ec': ecm_result['ecm_coeff'],  # Always include
+                'p_value': ecm_result['ecm_pvalue'],
+                'Cointegrated?': 'Yes' if ecm_result['ecm_pvalue'] <= 0.05 else 'No',
+                'n_obs': len(period_data)
+            })
+            
+        except Exception as e:
+            # Even for failed periods, maintain structure
+            start_date = period_data.index[0].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
+            end_date = period_data.index[-1].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
+            
+            results.append({
+                'Period': f"{start_date} to {end_date}",
+                'β_ec': np.nan,
+                'p_value': np.nan,
+                'Cointegrated?': 'No',
+                'n_obs': len(period_data)
+            })
+    
+    return pd.DataFrame(results)
+
+def analyze_stability_across_classes_fixed(all_data, reg_var_summary):
     """
     Run stability check for pairs organized by asset class.
+    Returns a summary DataFrame with exactly 5 periods for each pair.
+    Always includes β_ec values regardless of significance.
     """
-    stability_results = {}
-    stability_summaries = {}
-
     asset_classes = {
         'Commodities': ['oil_pair', 'agri_pair'],
         'Fixed Income & Currency': ['yield_pair', 'currency_pair'], 
@@ -473,8 +544,7 @@ def analyze_stability_across_classes(all_data, reg_var_summary):
         'ETFs': ['sector_etf_pair']
     }
 
-    stability_results = {}
-    stability_summaries = {}
+    stability_summary_data = []
     
     # Flatten nested loops
     pair_analysis_data = [
@@ -487,18 +557,64 @@ def analyze_stability_across_classes(all_data, reg_var_summary):
     for asset_class, pair_name, df in pair_analysis_data:
         y_col, x_col = df.columns[0], df.columns[1]
         try:
-            results_df, summary = multi_subperiod_stability_check(df, y_col, x_col)
-            stability_results[pair_name] = results_df
-            stability_summaries[pair_name] = summary
+            # Force exactly 5 equal periods
+            results_df = multi_subperiod_stability_check_fixed(df, y_col, x_col, n_periods=5)
+            
+            if not results_df.empty:
+                # Calculate stability metrics (only count significant cointegration for this metric)
+                n_cointegrated = (results_df['Cointegrated?'] == 'Yes').sum()
+                stability_rate = (n_cointegrated / 5 * 100)  # Always 5 periods
+                
+                # Create row data starting with basic info
+                row_data = {
+                    'Pair': pair_name,
+                    'Cointegrated': n_cointegrated,
+                    'Stability_Rate_%': stability_rate,
+                    'Overall_Stable': n_cointegrated >= 4  # 4 out of 5 periods
+                }
+                
+                # Add individual period β_ec values - ALWAYS include from results_df
+                for i in range(5):
+                    if i < len(results_df):
+                        # Always use the β_ec from results, regardless of significance
+                        beta_ec = results_df.iloc[i]['β_ec']
+                        row_data[f'Period_{i+1}_β_ec'] = beta_ec
+                    else:
+                        row_data[f'Period_{i+1}_β_ec'] = np.nan
+                
+                stability_summary_data.append(row_data)
+            else:
+                # Handle empty results - still create 5 period columns
+                row_data = {
+                    'Pair': pair_name,
+                    'Cointegrated': 0,
+                    'Stability_Rate_%': 0,
+                    'Overall_Stable': False
+                }
+                for i in range(5):
+                    row_data[f'Period_{i+1}_β_ec'] = np.nan
+                
+                stability_summary_data.append(row_data)
+                
         except Exception:
-            continue
+            # Handle failed analysis - still create 5 period columns
+            row_data = {
+                'Pair': pair_name,
+                'Cointegrated': 0,
+                'Stability_Rate_%': 0,
+                'Overall_Stable': False
+            }
+            for i in range(5):
+                row_data[f'Period_{i+1}_β_ec'] = np.nan
+                
+            stability_summary_data.append(row_data)
 
-    stable_pairs = [name for name, summary in stability_summaries.items() if summary.get('overall_stable', False)]
-    unstable_pairs = [name for name, summary in stability_summaries.items() if not summary.get('overall_stable', False)]
-
-    stability_rate = len(stable_pairs)/len(stability_summaries)*100 if stability_summaries else 0
-    return stability_results, stability_summaries, stable_pairs, unstable_pairs, stability_rate
-
+    # Create summary DataFrame
+    stability_df = pd.DataFrame(stability_summary_data)
+    if not stability_df.empty:
+        stability_df.set_index('Pair', inplace=True)
+    
+    return stability_df
 
 def analyze_johansen_triples(all_data):
     """
