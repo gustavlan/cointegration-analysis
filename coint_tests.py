@@ -457,164 +457,143 @@ def analyze_regression_var_summary(all_data):
     return pd.DataFrame(reg_var_summary)
 
 
-def multi_subperiod_stability_check_fixed(df, y_col, x_col, n_periods=5):
+def analyze_ecm_timeslices(
+    y,
+    x,
+    spread=None,
+    periods=5,
+    include_dX=True,
+    reestimate_beta_per_slice=True,
+    pick_direction=True,
+    freq="B",
+    min_obs=30,
+    return_details=False
+):
     """
-    Split data into exactly n_periods equal length periods and test each.
-    Always calculates β_ec regardless of significance.
+    ECM-by-periods analysis with per-slice cointegrating regression and optional direction selection.
     """
+    df = pd.concat({'y': y.asfreq(freq), 'x': x.asfreq(freq)}, axis=1).dropna()
+    if len(df) == 0:
+        out = pd.DataFrame([[np.nan]*periods, [np.nan]*periods],
+                           index=['ecm_coeff','ecm_pvalue'],
+                           columns=[f'P{i+1}' for i in range(periods)])
+        return (out, []) if return_details else out
+
+    # Pre-split indices
+    slices = np.array_split(np.arange(len(df)), periods)
+
+    def ecm_direction(sub_df, dep, reg):
+        """
+        Compute ECM for dep|reg within a slice:
+        """
+        # Cointegrating regression
+        Xc = sm.add_constant(sub_df[reg])
+        ols = sm.OLS(sub_df[dep], Xc).fit()
+        beta = float(ols.params[reg])
+        alpha = float(ols.params['const'])
+        spread_local = sub_df[dep] - (alpha + beta * sub_df[reg])
+
+        d_dep = sub_df[dep].diff()
+        d_reg = sub_df[reg].diff()
+        u_lag = spread_local.shift(1)
+
+        z = pd.concat({'d_dep': d_dep, 'd_reg': d_reg, 'u_lag': u_lag}, axis=1).dropna()
+        if len(z) < 3:
+            return {'coeff': np.nan, 'pvalue': np.nan, 'tvalue': np.nan,
+                    'beta': beta, 'alpha': alpha, 'n': int(len(z))}
+
+        X_cols = []
+        if include_dX:
+            X_cols.append('d_reg')
+        X_cols.append('u_lag')
+
+        X = sm.add_constant(z[X_cols])
+        res = sm.OLS(z['d_dep'], X).fit()
+
+        coeff = float(res.params.get('u_lag', np.nan))
+        pval  = float(res.pvalues.get('u_lag', np.nan))
+        tval  = float(res.tvalues.get('u_lag', np.nan))
+        return {'coeff': coeff, 'pvalue': pval, 'tvalue': tval,
+                'beta': beta, 'alpha': alpha, 'n': int(len(z))}
+
     results = []
-    
-    # Calculate period length
-    total_obs = len(df)
-    period_length = total_obs // n_periods
-    
-    for i in range(n_periods):
-        start_idx = i * period_length
-        if i == n_periods - 1:  # Last period gets any remaining observations
-            end_idx = total_obs
-        else:
-            end_idx = (i + 1) * period_length
-            
-        period_data = df.iloc[start_idx:end_idx]
-        
-        if len(period_data) < 30:  # Minimum observations check
-            # Still add a row to maintain period count
-            start_date = period_data.index[0].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
-            end_date = period_data.index[-1].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
-            
-            results.append({
-                'Period': f"{start_date} to {end_date}",
-                'β_ec': np.nan,
-                'p_value': np.nan,
-                'Cointegrated?': 'No',
-                'n_obs': len(period_data)
-            })
+    details = []
+    for idx in slices:
+        if len(idx) == 0:
+            results.append((np.nan, np.nan))
+            details.append({'direction': None})
             continue
-            
-        try:
-            # Run Engle-Granger test
-            eg_result = engle_granger(period_data, y_col, x_col)
-            
-            # Run ECM to get β_ec - ALWAYS calculate this
-            ecm_result = analyze_error_correction_model(
-                period_data[y_col], 
-                period_data[x_col], 
-                eg_result['spread']
-            )
-            
-            start_date = period_data.index[0].strftime('%Y-%m-%d')
-            end_date = period_data.index[-1].strftime('%Y-%m-%d')
-            
-            # Always include β_ec, mark significance separately
-            results.append({
-                'Period': f"{start_date} to {end_date}",
-                'β_ec': ecm_result['ecm_coeff'],  # Always include
-                'p_value': ecm_result['ecm_pvalue'],
-                'Cointegrated?': 'Yes' if ecm_result['ecm_pvalue'] <= 0.05 else 'No',
-                'n_obs': len(period_data)
-            })
-            
-        except Exception as e:
-            # Even for failed periods, maintain structure
-            start_date = period_data.index[0].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
-            end_date = period_data.index[-1].strftime('%Y-%m-%d') if len(period_data) > 0 else 'N/A'
-            
-            results.append({
-                'Period': f"{start_date} to {end_date}",
-                'β_ec': np.nan,
-                'p_value': np.nan,
-                'Cointegrated?': 'No',
-                'n_obs': len(period_data)
-            })
-    
-    return pd.DataFrame(results)
 
-def analyze_stability_across_classes_fixed(all_data, reg_var_summary):
-    """
-    Run stability check for pairs organized by asset class.
-    Returns a summary DataFrame with exactly 5 periods for each pair.
-    Always includes β_ec values regardless of significance.
-    """
-    asset_classes = {
-        'Commodities': ['oil_pair', 'agri_pair'],
-        'Fixed Income & Currency': ['yield_pair', 'currency_pair'], 
-        'Volatility': ['volatility_pair'],
-        'Country Indices': ['eu_index_pair_1', 'eu_index_pair_2'],
-        'Equities': ['fr_banking_pair', 'fast_fashion_pair', 'investor_ab_pair', 'vw_porsche_pair', 'semiconductor_pair'],
-        'ETFs': ['sector_etf_pair']
-    }
+        sub = df.iloc[idx].dropna()
+        if len(sub) < min_obs:
+            results.append((np.nan, np.nan))
+            details.append({'direction': None, 'n_slice': int(len(sub))})
+            continue
 
-    stability_summary_data = []
-    
-    # Flatten nested loops
-    pair_analysis_data = [
-        (asset_class, pair_name, all_data[pair_name])
-        for asset_class, pair_list in asset_classes.items()
-        for pair_name in pair_list
-        if pair_name in all_data and pair_name.endswith('_pair') and len(all_data[pair_name].columns) >= 2
-    ]
-    
-    for asset_class, pair_name, df in pair_analysis_data:
-        y_col, x_col = df.columns[0], df.columns[1]
-        try:
-            # Force exactly 5 equal periods
-            results_df = multi_subperiod_stability_check_fixed(df, y_col, x_col, n_periods=5)
-            
-            if not results_df.empty:
-                # Calculate stability metrics (only count significant cointegration for this metric)
-                n_cointegrated = (results_df['Cointegrated?'] == 'Yes').sum()
-                stability_rate = (n_cointegrated / 5 * 100)  # Always 5 periods
-                
-                # Create row data starting with basic info
-                row_data = {
-                    'Pair': pair_name,
-                    'Cointegrated': n_cointegrated,
-                    'Stability_Rate_%': stability_rate,
-                    'Overall_Stable': n_cointegrated >= 4  # 4 out of 5 periods
-                }
-                
-                # Add individual period β_ec values - ALWAYS include from results_df
-                for i in range(5):
-                    if i < len(results_df):
-                        # Always use the β_ec from results, regardless of significance
-                        beta_ec = results_df.iloc[i]['β_ec']
-                        row_data[f'Period_{i+1}_β_ec'] = beta_ec
-                    else:
-                        row_data[f'Period_{i+1}_β_ec'] = np.nan
-                
-                stability_summary_data.append(row_data)
+        # Direction 1: y | x
+        if reestimate_beta_per_slice:
+            d1 = ecm_direction(sub, dep='y', reg='x')
+        else:
+            # Optional path: use provided full-sample spread for y|x
+            if spread is None:
+                d1 = ecm_direction(sub, dep='y', reg='x')
             else:
-                # Handle empty results - still create 5 period columns
-                row_data = {
-                    'Pair': pair_name,
-                    'Cointegrated': 0,
-                    'Stability_Rate_%': 0,
-                    'Overall_Stable': False
-                }
-                for i in range(5):
-                    row_data[f'Period_{i+1}_β_ec'] = np.nan
-                
-                stability_summary_data.append(row_data)
-                
-        except Exception:
-            # Handle failed analysis - still create 5 period columns
-            row_data = {
-                'Pair': pair_name,
-                'Cointegrated': 0,
-                'Stability_Rate_%': 0,
-                'Overall_Stable': False
-            }
-            for i in range(5):
-                row_data[f'Period_{i+1}_β_ec'] = np.nan
-                
-            stability_summary_data.append(row_data)
+                sp = pd.Series(spread, index=df.index).iloc[idx]
+                d_y = sub['y'].diff()
+                d_x = sub['x'].diff()
+                u_lag = pd.Series(sp, index=sub.index).shift(1)
+                z = pd.concat({'d_dep': d_y, 'd_reg': d_x, 'u_lag': u_lag}, axis=1).dropna()
+                if len(z) >= 3:
+                    X_cols = ['d_reg'] if include_dX else []
+                    X_cols.append('u_lag')
+                    X = sm.add_constant(z[X_cols])
+                    res = sm.OLS(z['d_dep'], X).fit()
+                    d1 = {
+                        'coeff': float(res.params.get('u_lag', np.nan)),
+                        'pvalue': float(res.pvalues.get('u_lag', np.nan)),
+                        'tvalue': float(res.tvalues.get('u_lag', np.nan)),
+                        'beta': np.nan, 'alpha': np.nan, 'n': int(len(z))
+                    }
+                else:
+                    d1 = {'coeff': np.nan, 'pvalue': np.nan, 'tvalue': np.nan,
+                          'beta': np.nan, 'alpha': np.nan, 'n': int(len(z))}
 
-    # Create summary DataFrame
-    stability_df = pd.DataFrame(stability_summary_data)
-    if not stability_df.empty:
-        stability_df.set_index('Pair', inplace=True)
-    
-    return stability_df
+        # Direction 2: x | y (flip)
+        d2 = ecm_direction(sub, dep='x', reg='y') if pick_direction else None
+
+        # Select direction
+        chosen = d1
+        chosen_dir = 'y_on_x'
+        if pick_direction and d2 is not None:
+            cands = []
+            if np.isfinite(d1['coeff']) and np.isfinite(d1['pvalue']):
+                cands.append(('y_on_x', d1))
+            if np.isfinite(d2['coeff']) and np.isfinite(d2['pvalue']):
+                cands.append(('x_on_y', d2))
+
+            if cands:
+                negs = [(name, d) for name, d in cands if d['coeff'] < 0]
+                if negs:
+                    # Prefer smaller p-value among negative coeffs; tiebreak by more negative coeff
+                    name, d = sorted(negs, key=lambda nd: (nd[1]['pvalue'], nd[1]['coeff']))[0]
+                else:
+                    # If none negative, pick lower p-value
+                    name, d = sorted(cands, key=lambda nd: nd[1]['pvalue'])[0]
+                chosen, chosen_dir = d, name
+
+        results.append((chosen['coeff'], chosen['pvalue']))
+        details.append({
+            'direction': chosen_dir,
+            'y_on_x': d1,
+            'x_on_y': d2,
+            'n_slice': int(len(sub))
+        })
+
+    cols = [f'P{i+1}' for i in range(len(results))]
+    summary = pd.DataFrame(results, index=cols, columns=['ecm_coeff', 'ecm_pvalue']).T
+
+    return (summary, details) if return_details else summary
+
 
 def analyze_johansen_triples(all_data):
     """
