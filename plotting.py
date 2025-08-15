@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
-from coint_tests import engle_granger
+from coint_tests import engle_granger, ou_params
 from threshold_optimization import optimize_thresholds, plot_threshold_tradeoff
 
 # If available, reuse the normalizer
@@ -224,11 +224,11 @@ def plot_performance(returns, sharpe_window=63, beta_window=126, pair_name=None,
 
 
 def analyze_pairs_nb(all_data, selected,
-                     Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True):
+                     Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True,
+                     normalize: bool = False):
     """
     Analysis of selected 2-asset pairs with optional OU parameter usage.
     """
-    from coint_tests import ou_params
     summary = []
     opt_tables = {}
 
@@ -257,7 +257,8 @@ def analyze_pairs_nb(all_data, selected,
             spread, mu_sample, sigma_sample, beta,
             y=df[y_col], x=df[x_col],
             Z_min=Z_min, Z_max=Z_max, dZ=dZ, cost=cost,
-            ou_mu=mu_ou, ou_sigma=sigma_ou, use_ou=use_ou
+            ou_mu=mu_ou, ou_sigma=sigma_ou, use_ou=use_ou,
+            normalize=normalize
         )
 
         # Pick best-Z by cum_PnL

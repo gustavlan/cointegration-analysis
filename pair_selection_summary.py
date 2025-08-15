@@ -14,7 +14,8 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
                            cost: float       = 0.002,
                            Z_min: float      = 0.5,
                            Z_max: float      = 3.0,
-                           dZ:   float       = 0.1
+                           dZ:   float       = 0.1,
+                           normalize: bool   = False
                           ) -> pd.DataFrame:
     """
     For each 2-asset or 3-asset group in all_data, compute:
@@ -72,7 +73,8 @@ def assemble_group_summary(all_data: dict[str, pd.DataFrame],
                     spread, spread.mean(), spread.std(), 
                     beta if beta is not None else 1.0,
                     y=df.iloc[:,0], x=df.iloc[:,1],
-                    Z_min=Z_min, Z_max=Z_max, dZ=dZ, cost=cost
+                    Z_min=Z_min, Z_max=Z_max, dZ=dZ, cost=cost,
+                    normalize=normalize
                 )
             else:
                 # For triples/more, use spread returns directly 

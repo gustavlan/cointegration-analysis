@@ -9,63 +9,82 @@ def backtest_spread(e: pd.Series,
                     y: pd.Series,
                     x: pd.Series,
                     Z: float,
-                    cost: float = 0.0
+                    cost: float = 0.0,
+                    normalize: bool = False
                    ):
     """
-    Backtest a simple mean-reversion strategy on the spread e_t
-    """
-    upper = mu + Z * sigma
-    lower = mu - Z * sigma
-    
-    # Pre-calculate arrays for better performance
-    et = e.values
-    dates = e.index
-    pnls = []
-    durations = []
-    
-    in_trade = False
-    direction = 0
-    entry_idx = None
-    entry_y = entry_x = 0
-    
-    # Vectorized signal detection
-    long_signals = et < lower
-    short_signals = et > upper
-    exit_signals = np.abs(et - mu) <= np.abs(et - mu).min()  # exit when closest to mean
-    
-    # Process trades using state machine with vectorized operations
-    position = np.zeros(len(et))
-    for t in range(1, len(et)):
-        if position[t-1] == 0:  # Not in trade
-            if short_signals[t]:
-                position[t] = -1
-                entry_idx = dates[t]
-                entry_y, entry_x = y.iloc[t], x.iloc[t]
-            elif long_signals[t]:
-                position[t] = 1
-                entry_idx = dates[t] 
-                entry_y, entry_x = y.iloc[t], x.iloc[t]
-        else:  # In trade
-            position[t] = position[t-1]  # Maintain position
-            # Exit on mean reversion
-            if ((position[t-1] == 1 and et[t] >= mu) or 
-                (position[t-1] == -1 and et[t] <= mu)):
-                exit_y, exit_x = y.iloc[t], x.iloc[t]
-                pnl = position[t-1] * ((exit_y - entry_y) - beta * (exit_x - entry_x)) - cost
-                pnls.append(pnl)
-                durations.append((dates[t] - entry_idx).days)
-                position[t] = 0
+    Backtest a simple mean-reversion strategy on the spread e_t.
 
-    N = len(pnls)
-    if N == 0:
-        return {'N_trades': 0, 'cum_PnL': 0, 'avg_PnL': np.nan, 'avg_duration': np.nan}
-        
-    pnls = np.array(pnls)  # Convert to numpy array for faster calculations
+    Implementation note:
+    - Uses spread-based returns: ret_t = position_{t-1} * Δe_t - cost * turnover_t
+      This avoids inflated leg-level P&L from front-month futures roll gaps.
+    - If normalize=True, uses Δz_t (i.e., Δ(e_t/σ)) for dimensionless returns.
+    """
+    e = pd.Series(e).astype(float).dropna()
+    mu = float(mu)
+    sigma = float(sigma) if np.isfinite(sigma) and sigma != 0 else np.nan
+
+    upper = mu + Z * sigma if np.isfinite(sigma) else np.nan
+    lower = mu - Z * sigma if np.isfinite(sigma) else np.nan
+
+    # Build entry signals at static bands μ ± Z·σ
+    signals = pd.Series(0, index=e.index, dtype=int)
+    if np.isfinite(upper) and np.isfinite(lower):
+        signals[e < lower] = 1
+        signals[e > upper] = -1
+    else:
+        # Fallback: no bands available -> flat
+        return {'N_trades': 0, 'cum_PnL': 0.0, 'avg_PnL': np.nan, 'avg_duration': np.nan}
+
+    prev_sig = signals.shift(1).fillna(0).astype(int)
+    de = e.diff().fillna(0.0)
+
+    # Optionally normalize by sigma to get dimensionless PnL
+    if normalize and np.isfinite(sigma) and sigma > 0:
+        dX = de / sigma
+    else:
+        dX = de
+
+    # Transaction costs applied on changes in position (turnover)
+    turn = (signals - prev_sig).abs().astype(float)
+    ret = prev_sig.astype(float) * dX - cost * turn
+
+    # Identify round-trip entries and exits
+    entries_mask = (prev_sig == 0) & (signals != 0)
+    exits_mask   = (prev_sig != 0) & (signals == 0)
+    entry_idx = list(np.where(entries_mask)[0])
+    exit_idx  = list(np.where(exits_mask)[0])
+
+    # Align exits to the next exit after each entry
+    trade_pnls = []
+    durations = []
+    j = 0
+    for i in entry_idx:
+        while j < len(exit_idx) and exit_idx[j] <= i:
+            j += 1
+        if j < len(exit_idx):
+            k = exit_idx[j]
+            # Include entry through exit days so costs align with cum_PnL
+            trade_pnls.append(float(ret.iloc[i:k+1].sum()))
+            durations.append(k - i)
+            j += 1
+        else:
+            # No exit found; close at last bar (conservative include tail)
+            k = len(ret) - 1
+            if k > i:
+                trade_pnls.append(float(ret.iloc[i:k+1].sum()))
+                durations.append(k - i)
+
+    N = len(trade_pnls)
+    cum = float(ret.sum())
+    avg = float(np.mean(trade_pnls)) if N > 0 else np.nan
+    dur = float(np.mean(durations)) if N > 0 else np.nan
+
     return {
         'N_trades': N,
-        'cum_PnL': pnls.sum(),
-        'avg_PnL': pnls.mean(),
-        'avg_duration': np.mean(durations)
+        'cum_PnL': cum,
+        'avg_PnL': avg,
+        'avg_duration': dur
     }
 
 def optimize_thresholds(e: pd.Series,
@@ -80,7 +99,8 @@ def optimize_thresholds(e: pd.Series,
                         cost: float = 0.0,
                         ou_mu: float = None,
                         ou_sigma: float = None,
-                        use_ou: bool = False
+                        use_ou: bool = False,
+                        normalize: bool = False
                        ):
     """
     Sweep Z from Z_min to Z_max in steps of dZ,
@@ -100,7 +120,7 @@ def optimize_thresholds(e: pd.Series,
     
     # Vectorized threshold optimization using list comprehension
     records = [
-        {**backtest_spread(e, final_mu, final_sigma, beta, y, x, Z, cost), 'Z': Z}
+        {**backtest_spread(e, final_mu, final_sigma, beta, y, x, Z, cost, normalize=normalize), 'Z': Z}
         for Z in Zs
     ]
 
