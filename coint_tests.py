@@ -4,7 +4,7 @@ import contextlib
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-from statsmodels.tsa.stattools import adfuller, kpss, InterpolationWarning
+from statsmodels.tsa.stattools import adfuller, kpss, InterpolationWarning, zivot_andrews
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
@@ -431,23 +431,23 @@ def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
     return results_df, summary
 
 
-def za_test(series, trim=0.1, lags=None):
-    """Zivot-Andrews unit-root test with structural break."""
-    try:
-        from arch.unitroot import ZivotAndrews
-        s = series.dropna()
-        if len(s) < 50:
-            return {'stat': None, 'pvalue': None, 'breakpoint': None}
-        
-        if lags is None:
-            res = ZivotAndrews(s, trim=trim, trend='ct')
-        else:
-            res = ZivotAndrews(s, trim=trim, lags=lags, trend='ct')
-            
-        breakpoint = getattr(res, 'breakpoint', None)
-        return {'stat': res.stat, 'pvalue': res.pvalue, 'breakpoint': breakpoint}
-    except (ImportError, Exception):
-        return {'stat': None, 'pvalue': None, 'breakpoint': None}
+def za_test(series, trim=0.1, lags=None, model='trend'):
+    """Zivot–Andrews test with a single break; returns index and timestamp."""
+    s = series.dropna()
+    regression = {'level': 'c', 'trend': 'ct'}[model]
+    autolag = ('AIC', None)[int(lags is not None)]
+    stat, pval, crit, bp, usedlag = zivot_andrews(
+        s.values, trim=trim, maxlag=lags, regression=regression, autolag=autolag
+    )
+    bp = int(bp)
+    bp_date = pd.Index(s.index)[bp]
+    return pd.DataFrame([{
+        'stat': float(stat),
+        'pvalue': float(pval),
+        'breakpoint': bp,
+        'break_date': pd.Timestamp(bp_date),
+        'model': model
+    }])
 
 
 def analyze_regression_var_summary(all_data):
