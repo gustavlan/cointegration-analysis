@@ -8,7 +8,6 @@ from statsmodels.tsa.stattools import adfuller, kpss, InterpolationWarning, zivo
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
-from backtest import nested_cv
 
 warnings.filterwarnings(
     'ignore',
@@ -352,6 +351,8 @@ def run_pair_backtests(
     """
     Run nested cross-validation backtests on cointegrated pairs.
     """
+    # Local import to avoid circular dependency at module import time
+    from backtest import nested_cv
     results = []
 
     for pair in selected:

@@ -4,6 +4,8 @@ from dateutil.relativedelta import relativedelta
 from typing import Dict, List, Tuple, Optional
 import statsmodels.api as sm
 
+from coint_tests import engle_granger
+
 _EPS = 1e-12
 
 # Rolling time‐series splits
@@ -145,11 +147,6 @@ def backtest_pair_with_stops(
     """
     Stateful pairs backtest with Z-entry/exit, hard Z stop, per-trade loss stop,
     time stop, and strategy-level DD circuit breaker.
-    
-    Returns:
-      returns: strategy daily returns (spread units, dimensionless after risk scaling if any)
-      signals: position series in {-1, 0, +1}
-      zscore:  rolling z-score used for logic
     """
     df = df_pair.dropna().copy()
 
@@ -474,8 +471,6 @@ def backtest_pair_with_vol_targeting(
 def normalize_returns_for_beta(returns: pd.Series, scale_window: int = 63, clip_sigma: float = 5.0) -> pd.Series:
     """
     Convert PnL-in-spread-units to dimensionless returns for beta calc:
-    - divide by rolling std
-    - winsorize to clip_sigma
     """
     r = returns.copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
     vol = r.rolling(scale_window, min_periods=max(10, scale_window // 3)).std().replace(0, np.nan)
@@ -501,11 +496,21 @@ def _drawdown_stats(returns: pd.Series) -> Tuple[pd.Series, float, int]:
     peaks = eq.cummax()
     dd = eq / peaks - 1.0
     max_dd = float(dd.min()) if len(dd) else np.nan
-    # duration: count bars since last peak
-    at_high = (dd == 0).astype(int)
-    grp = (at_high.shift(1) != at_high).cumsum()
-    dur = at_high.groupby(grp).cumcount()
-    max_dur = int(dur.max()) if len(dur) else 0
+    
+    # Fixed drawdown duration calculation
+    # Find consecutive periods in drawdown (below peak)
+    in_drawdown = (dd < 0).astype(int)
+    
+    # Group consecutive drawdown periods  
+    grp = (in_drawdown.diff() != 0).cumsum()
+    
+    # Calculate length of each drawdown period
+    drawdown_lengths = in_drawdown.groupby(grp).sum()
+    
+    # Get maximum drawdown duration (only periods that were actually in drawdown)
+    actual_drawdowns = drawdown_lengths[drawdown_lengths > 0]
+    max_dur = int(actual_drawdowns.max()) if len(actual_drawdowns) > 0 else 0
+    
     return dd, max_dd, max_dur
 
 def _hist_var_es(returns: pd.Series, alpha: float = 0.95) -> Tuple[float, float]:
@@ -566,6 +571,19 @@ def perf_metrics(returns: pd.Series, freq: int = TRADING_DAYS) -> Dict[str, floa
         'HitRate': hit_rate,
         'N': n,
     }
+
+def pnl_drawdown_stats(pnl_series: pd.Series) -> Dict[str, float]:
+    """Compute drawdown stats on cumulative PnL (sum, not compounded)."""
+    cum_pnl = pnl_series.cumsum()
+    peak = cum_pnl.cummax()
+    dd = cum_pnl - peak
+    max_dd = float(dd.min()) if len(dd) else np.nan
+    # duration: count bars since last peak
+    at_high = (dd == 0).astype(int)
+    grp = (at_high.shift(1) != at_high).cumsum()
+    dur = at_high.groupby(grp).cumcount()
+    max_dur = int(dur.max()) if len(dur) else 0
+    return {'PnL_MaxDD': max_dd, 'PnL_MaxDD_Days': max_dur}
 
 def generate_pair_returns(all_data: Dict[str, pd.DataFrame],
                           summary_df: pd.DataFrame,
@@ -888,26 +906,11 @@ def run_vol_targeted_backtests(selected, all_data, summary_df, guarded_returns_d
         return new_results
 
 
-def run_guarded_backtests(selected, all_data, backtest_type='stops'):
+def run_guarded_backtests(selected, all_data, summary_df=None, backtest_type='stops'):
     """
-    Run guarded backtests with improved risk management parameters.
-    
-    Key improvements to fix catastrophic drawdown/flat performance issues:
-    1. Removed global trading halt (equity_dd_stop=None) - now only per-trade stops
-    2. Wider Z-bands (1.8 vs 1.5) and longer lookback (252 vs 126) to avoid whipsaws
-    3. Added warm-up period to avoid trading with unstable statistics
-    4. Use dropna() instead of fillna(0) on returns to avoid artificial flat periods
-    
-    Parameters:
-        backtest_type: 'stops' or 'vol_targeted'
-    
-    Returns:
-        Dict of {pair_name: returns_series}
+    Run guarded backtests with per-pair best_Z and improved risk management parameters.
     """
-    from coint_tests import engle_granger
     
-    guarded_returns = {}
-
     # Vectorized processing using dictionary comprehension
     def process_guarded_backtest(pair):
         df = all_data[pair].dropna()
@@ -915,24 +918,35 @@ def run_guarded_backtests(selected, all_data, backtest_type='stops'):
         eg = engle_granger(df, y, x)
         spread = eg['spread'].dropna()
         df_bt = pd.DataFrame({'spread': spread})
-
+        
+        # Get per-pair best_Z if available
+        if summary_df is not None and pair in summary_df['pair'].values:
+            best_Z = float(summary_df.loc[summary_df['pair'] == pair, 'best_Z'].iloc[0])
+        else:
+            best_Z = 1.8  # fallback
+        
         if backtest_type == 'stops':
-            # Stops only (improved parameters to avoid premature stops and global halts)
             r, sig, z = backtest_pair_with_stops(
                 df_bt,
                 spread_col='spread',
-                z_entry=1.8, z_exit=0.3, z_window=252,  # Wider bands, longer lookback
-                stop_z=3.5,                              # More room before hard stop
-                stop_loss_sigma=3.0,                     # Looser per-trade stop
-                equity_dd_stop=None,                     # Disable global halt mechanism
+                z_entry=best_Z, z_exit=0.4, z_window=126,  # Use best_Z, wider exit, shorter window
+                stop_z=4.0, stop_loss_sigma=5.0,           # Relaxed stops
+                equity_dd_stop=None,                       # Remove problematic drawdown stop
+                max_holding_days=252,                      # Allow longer trades
                 cost=0.002
             )
+            # Normalize returns to avoid compounding underflow
+            dS = spread.diff().fillna(0.0)
+            spread_vol = dS.std()
+            # Use softer normalization to prevent extreme clipping
+            r = (r / spread_vol).clip(-0.02, 0.02)  # Reduced from ±5% to ±2% daily limit
+            
         elif backtest_type == 'vol_targeted':
             r, sig, z = backtest_pair_with_vol_targeting(
                 df_bt,
                 spread_col='spread',
-                z_entry=1.8, z_exit=0.3, z_window=252,  # Wider bands, longer lookback
-                target_vol=0.08,                         # Lower target vol (was 0.12)
+                z_entry=best_Z, z_exit=0.4, z_window=126,  # Use best_Z, consistent params
+                target_vol=0.08,
                 cost=0.002
             )
         else:
@@ -944,3 +958,30 @@ def run_guarded_backtests(selected, all_data, backtest_type='stops'):
     guarded_returns = {pair: result for pair in selected if (result := process_guarded_backtest(pair)) is not None}
 
     return guarded_returns
+
+
+def make_pair_info(summary_df: pd.DataFrame) -> dict:
+    info = summary_df.set_index('pair')[['best_Z', 'N_trades']]
+    return info.to_dict('index')
+
+# Compute metrics for many pairs at once
+def compute_metrics_for_pairs(returns_dict: dict, selected, summary_df, fillna=0.0) -> pd.DataFrame:
+    info = make_pair_info(summary_df)
+    rows = [
+        compute_pair_metrics(
+            returns_dict[pair].fillna(fillna),
+            pair=pair,
+            pair_info=info.get(pair, {})
+        )
+        for pair in selected
+        if pair in returns_dict
+    ]
+    metrics_df = pd.DataFrame(rows)
+    cols = ['pair','CAGR','Vol_Ann','Sharpe','Sortino','MaxDD','MaxDD_Days','Calmar','best_Z','HitRate','N']
+    return metrics_df[cols] if not metrics_df.empty else metrics_df
+
+# One-shot runner: backtest + metrics
+def run_and_score(selected, all_data, summary_df, backtest_type='stops', fillna=0.0):
+    returns = run_guarded_backtests(selected, all_data, summary_df, backtest_type=backtest_type)
+    metrics = compute_metrics_for_pairs(returns, selected, summary_df, fillna=fillna)
+    return returns, metrics
