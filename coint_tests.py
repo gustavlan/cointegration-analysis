@@ -1,4 +1,6 @@
 import warnings
+import os
+import contextlib
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -13,6 +15,26 @@ warnings.filterwarnings(
     message='The test statistic is outside of the range of p-values available',
     category=InterpolationWarning
 )
+
+@contextlib.contextmanager
+def silence_fd_output():
+    """Silence low-level stdout/stderr (FD 1/2) temporarily (tiny helper)."""
+    try:
+        saved_out, saved_err = os.dup(1), os.dup(2)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 1)
+        os.dup2(devnull, 2)
+        os.close(devnull)
+        try:
+            yield
+        finally:
+            os.dup2(saved_out, 1)
+            os.dup2(saved_err, 2)
+            os.close(saved_out)
+            os.close(saved_err)
+    except Exception:
+        # If anything goes wrong, do nothing but still proceed
+        yield
 
 
 def matrix_ols_regression(y, X):
@@ -187,9 +209,8 @@ def select_var_order(df, maxlags=10, trend='c', freq="B"):
         model = VAR(df)
         try:
             res = model.fit(p, trend=trend)
-        except Exception as e:
-            # singularity, too many parameters etc.
-            print(f"p={p} failed: {e}")
+        except Exception:
+            # Skip failing lag orders silently
             continue
 
         # companion‐matrix roots = VAR stability eigenvalues
@@ -642,3 +663,80 @@ def analyze_johansen_triples(all_data):
         return pd.DataFrame(johansen_summary)
     else:
         return pd.DataFrame()  # Empty DataFrame if no triples
+
+
+def johansen_sensitivity_summary(all_data, min_obs=120):
+    """
+    Minimal Johansen sensitivity summary.
+    Counts how many simple specifications yield rank>0 per window (full/H1/H2).
+    Uses existing johansen() and suppresses verbose solver output locally.
+    Returns a DataFrame with columns: triple, window, rank>0, total, summary.
+    """
+    # Suppress noisy warnings during internal VAR/Johansen fits
+    warnings.filterwarnings('ignore', message='.*SVD did not converge.*')
+    warnings.filterwarnings('ignore', message='.*Critical values are only available.*')
+
+    rows = []
+    try:
+        triples = [k for k in all_data.keys() if 'triple' in k.lower()]
+    except Exception:
+        return pd.DataFrame(columns=['triple', 'window', 'rank>0', 'total', 'summary'])
+
+    for triple in triples:
+        try:
+            df0 = all_data[triple].replace([np.inf, -np.inf], np.nan).dropna().astype(float)
+        except Exception:
+            continue
+
+        if df0.shape[1] < 3 or len(df0) < min_obs:
+            continue
+
+        idx = df0.index
+        mid = idx[len(idx)//2]
+        windows = {
+            'full': df0,
+            'H1': df0.loc[:mid],
+            'H2': df0.loc[mid:]
+        }
+
+        for win, sdf in windows.items():
+            sdf = sdf.dropna()
+            if len(sdf) < min_obs:
+                continue
+
+            weekly = sdf.resample('W-FRI').last().dropna()
+            variants = [('levels_daily', sdf), ('levels_weekly', weekly)]
+            if (sdf > 0).all().all():
+                variants += [('logs_daily', np.log(sdf)), ('logs_weekly', np.log(weekly))]
+
+            det_orders = [-1, 0, 1]
+            hits = 0
+            tot = 0
+
+            for _, dfx in variants:
+                if len(dfx) < min_obs:
+                    continue
+                for det in det_orders:
+                    try:
+                        # Silence low-level solver noise printed to stdout/stderr
+                        with silence_fd_output():
+                            res = johansen(dfx, det_order=det)
+                        r = res.get('johansen_n', 0) or 0
+                        tot += 1
+                        if isinstance(r, (int, np.integer)) and r > 0:
+                            hits += 1
+                    except Exception:
+                        # Skip failing specs (ill-conditioned windows, singularities, etc.)
+                        continue
+
+            if tot > 0:
+                rows.append({
+                    'triple': triple,
+                    'window': win,
+                    'rank>0': hits,
+                    'total': tot,
+                    'summary': f"{hits}/{tot}"
+                })
+
+    summary = pd.DataFrame(rows).sort_values(['triple', 'window']) if rows else pd.DataFrame(columns=['triple','window','rank>0','total','summary'])
+    return summary
