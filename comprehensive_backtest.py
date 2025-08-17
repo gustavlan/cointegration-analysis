@@ -687,6 +687,7 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
             results.append({
                 'split': split_idx,
                 'z_threshold': z_thresh,
+                'hedge_ratio': coint_result['beta'],
                 'total_return': total_return,
                 'sharpe_ratio': sharpe,
                 'max_drawdown': max_dd,
@@ -738,7 +739,10 @@ def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3,
             continue
     
     if all_results:
-        return pd.concat(all_results, ignore_index=True)
+        df = pd.concat(all_results, ignore_index=True)
+        # Reorder columns: pair first, hedge_ratio before total_return
+        cols = ['pair'] + [c for c in df.columns if c != 'pair']
+        return df[cols]
     else:
         return pd.DataFrame()
 
