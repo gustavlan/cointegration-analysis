@@ -5,77 +5,52 @@ import yfinance as yf
 from coint_tests import engle_granger, ou_params
 from threshold_optimization import optimize_thresholds, plot_threshold_tradeoff
 
-# If available, reuse the normalizer
-try:
-    from backtest import normalize_returns_for_beta
-except Exception:
-    def normalize_returns_for_beta(returns, scale_window=63, clip_sigma=5.0):
-        r = returns.copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        vol = r.rolling(scale_window, min_periods=max(10, scale_window // 3)).std().replace(0, np.nan)
-        r_norm = r / (vol + 1e-12)
-        mu = r_norm.rolling(scale_window, min_periods=max(10, scale_window // 3)).mean()
-        sd = r_norm.rolling(scale_window, min_periods=max(10, scale_window // 3)).std()
-        upper = mu + clip_sigma * sd
-        lower = mu - clip_sigma * sd
-        r_norm = np.minimum(np.maximum(r_norm, lower), upper)
-        return r_norm.fillna(0.0)
-
+def normalize_returns_for_beta(returns, scale_window=63, clip_sigma=5.0):
+    r = returns.copy().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    vol = r.rolling(scale_window, min_periods=max(10, scale_window // 3)).std().replace(0, np.nan)
+    r_norm = r / (vol + 1e-12)
+    mu = r_norm.rolling(scale_window, min_periods=max(10, scale_window // 3)).mean()
+    sd = r_norm.rolling(scale_window, min_periods=max(10, scale_window // 3)).std()
+    upper, lower = mu + clip_sigma * sd, mu - clip_sigma * sd
+    return np.minimum(np.maximum(r_norm, lower), upper).fillna(0.0)
 
 def _safe_rolling_beta(strategy_returns: pd.Series, bench_returns: pd.Series, window: int) -> pd.Series:
-    """Calculate safe rolling beta that prevents blow-ups."""
     sr = normalize_returns_for_beta(strategy_returns, scale_window=max(20, window // 2))
     br = bench_returns.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     cov = sr.rolling(window, min_periods=max(10, window // 3)).cov(br)
     var = br.rolling(window, min_periods=max(10, window // 3)).var()
-    beta = cov / (var + 1e-8)  # epsilon avoid blow-ups
-    return beta.clip(lower=-10, upper=10)
-
+    return (cov / (var + 1e-8)).clip(lower=-10, upper=10)
 
 def _fetch_benchmarks(index):
-    """
-    Download S&P 500 (^GSPC) and 3M T-bill (^IRX),
-    compute daily excess returns, and align to index.
-    """
     try:
         start, end = index.min(), index.max()
         spx_data = yf.download('^GSPC', start=start, end=end, auto_adjust=True, progress=False)
         irx_data = yf.download('^IRX', start=start, end=end, auto_adjust=True, progress=False)
 
-        # Check if downloads were successful and extract Close data
         if len(spx_data) == 0 or len(irx_data) == 0 or 'Close' not in spx_data.columns or 'Close' not in irx_data.columns:
             raise ValueError('Downloaded data is empty or missing Close column')
         
         spx = spx_data['Close']
         irx = irx_data['Close']
         
-        # Ensure we got Series, not DataFrames (handle MultiIndex case)
         if isinstance(spx, pd.DataFrame):
-            spx = spx.iloc[:, 0]  # Take first column if it's a DataFrame
+            spx = spx.iloc[:, 0]
         if isinstance(irx, pd.DataFrame):
-            irx = irx.iloc[:, 0]  # Take first column if it's a DataFrame
+            irx = irx.iloc[:, 0]
 
         spx_ret = spx.pct_change()
-        spx_ret.name = 'spx_ret'
-        rf_daily = ((1 + irx/100) ** (1/252) - 1) # Convert annual yield% to daily risk-free rate
-        rf_daily.name = 'rf'
+        rf_daily = ((1 + irx/100) ** (1/252) - 1)
         df = pd.concat([spx_ret, rf_daily], axis=1).dropna()
         excess = df.iloc[:, 0] - df.iloc[:, 1]
-        excess.name = 'spx_exc'
-
         return excess.reindex(index).dropna()
     except Exception as e:
         print(f"Warning: Could not fetch benchmark data: {e}")
-        # Return a zero series aligned to the index if download fails
         return pd.Series(0, index=index, name='spx_exc')
 
 
 def plot_drawdown(strat_ret):
-    """
-    Plot the drawdown of a strategy return series.
-    """
     cum = (1 + strat_ret).cumprod()
     dd = cum - cum.cummax()
-
     plt.figure()
     plt.plot(dd)
     plt.title("Strategy Drawdown")
@@ -85,15 +60,10 @@ def plot_drawdown(strat_ret):
     plt.tight_layout()
     plt.show()
 
-
 def plot_rolling_sharpe(strat_ret, window=63):
-    """
-    Plot rolling Sharpe ratio (annualized) over a fixed window.
-    """
     roll_mean = strat_ret.rolling(window).mean()
     roll_std = strat_ret.rolling(window).std()
     roll_sh = roll_mean / roll_std * np.sqrt(252)
-
     plt.figure()
     plt.plot(roll_sh)
     plt.title(f"Rolling Sharpe Ratio ({window}-day)")
@@ -103,19 +73,12 @@ def plot_rolling_sharpe(strat_ret, window=63):
     plt.tight_layout()
     plt.show()
 
-
 def plot_rolling_beta(strat_ret, window=126):
-    """
-    Plot rolling beta of strategy vs S&P 500 excess returns.
-    """
     spx_exc = _fetch_benchmarks(strat_ret.index)
     df = pd.concat([strat_ret.rename('strat'), spx_exc], axis=1).dropna()
-
-    # Rolling covariance and variance
     cov = df['strat'].rolling(window).cov(df['spx_exc'])
     var = df['spx_exc'].rolling(window).var()
     beta = cov / var
-
     plt.figure()
     plt.plot(beta)
     plt.title(f"Rolling β vs S&P 500 Excess ({window}-day)")
@@ -223,34 +186,25 @@ def plot_performance(returns, sharpe_window=63, beta_window=126, pair_name=None,
     return fig
 
 
-def analyze_pairs_nb(all_data, selected,
-                     Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True,
-                     normalize: bool = False):
-    """
-    Analysis of selected 2-asset pairs with optional OU parameter usage.
-    """
+def analyze_pairs_nb(all_data, selected, Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True, normalize: bool = False):
     summary = []
     opt_tables = {}
 
-    # Vectorized processing using list comprehension
-    def process_pair_analysis(pair):
+    for pair in selected:
         df = all_data.get(pair)
         if df is None or df.shape[1] != 2:
             print(f"'{pair}': not found or not a 2-asset series.")
-            return None, None
+            continue
 
         y_col, x_col = df.columns
         eg = engle_granger(df, y_col, x_col)
         spread, beta = eg['spread'], eg['beta']
         if spread is None:
             print(f"'{pair}' not cointegrated (p={eg['eg_pvalue']:.3f}), skipping.")
-            return None, None
+            continue
 
-        # Get OU parameters for potential use
         ou = ou_params(spread)
         mu_ou, sigma_ou = ou['ou_mu'], ou['ou_sigma']
-        
-        # Use sample statistics as fallback
         mu_sample, sigma_sample = spread.mean(), spread.std()
         
         opt_df = optimize_thresholds(
@@ -261,40 +215,21 @@ def analyze_pairs_nb(all_data, selected,
             normalize=normalize
         )
 
-        # Pick best-Z by cum_PnL
         best = opt_df.loc[opt_df['cum_PnL'].idxmax()]
-        summary_entry = {
-            'pair':     pair,
-            'best_Z':   best['Z'],
-            'N_trades': best['N_trades'],
-            'cum_PnL':  best['cum_PnL'],
-            'avg_PnL':  best['avg_PnL'],
-            'theta':    ou['ou_theta'],
-            'half_life': ou['OU_HalfLife']
-        }
+        summary.append({
+            'pair': pair, 'best_Z': best['Z'], 'N_trades': best['N_trades'],
+            'cum_PnL': best['cum_PnL'], 'avg_PnL': best['avg_PnL'],
+            'theta': ou['ou_theta'], 'half_life': ou['OU_HalfLife']
+        })
 
-        # Create and show plot
         fig = plot_threshold_tradeoff(opt_df)
         fig.suptitle(f"Tradeoff: {pair}", y=1.02)
         plt.show()
+        opt_tables[pair] = opt_df
 
-        return summary_entry, (pair, opt_df)
-
-    # Process all pairs and separate results
-    results = [process_pair_analysis(pair) for pair in selected]
-    
-    # Filter out None results and separate summary and opt_tables
-    valid_results = [(summary, opt) for summary, opt in results if summary is not None]
-    summary = [s for s, _ in valid_results]
-    opt_tables = dict(o for _, o in valid_results)
-
-    summary_df = pd.DataFrame(summary)
-
-    return summary_df, opt_tables
-
+    return pd.DataFrame(summary), opt_tables
 
 def safe_metrics(returns, name):
-    """Calculate safe performance metrics that prevent blow-ups."""
     clean_ret = returns.replace([np.inf, -np.inf], np.nan).fillna(0)
     clean_ret = np.clip(clean_ret, -0.5, 0.5)
     
@@ -307,13 +242,7 @@ def safe_metrics(returns, name):
     vol = clean_ret.std() * np.sqrt(252)
     total_ret = cum.iloc[-1] - 1
     
-    return {
-        "strategy": name,
-        "max_dd": max_dd,
-        "sharpe": sharpe,
-        "vol": vol,
-        "total_ret": total_ret
-    }
+    return {"strategy": name, "max_dd": max_dd, "sharpe": sharpe, "vol": vol, "total_ret": total_ret}
 
 
 def plot_systematic_performance(stitched_results, selected_pairs, benchmark_returns, 

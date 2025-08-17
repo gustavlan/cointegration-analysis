@@ -9,15 +9,10 @@ from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 from pykalman import KalmanFilter
 
-warnings.filterwarnings(
-    'ignore',
-    message='The test statistic is outside of the range of p-values available',
-    category=InterpolationWarning
-)
+warnings.filterwarnings('ignore', category=InterpolationWarning)
 
 @contextlib.contextmanager
 def silence_fd_output():
-    """Silence low-level stdout/stderr (FD 1/2) temporarily (tiny helper)."""
     try:
         saved_out, saved_err = os.dup(1), os.dup(2)
         devnull = os.open(os.devnull, os.O_WRONLY)
@@ -32,9 +27,7 @@ def silence_fd_output():
             os.close(saved_out)
             os.close(saved_err)
     except Exception:
-        # If anything goes wrong, do nothing but still proceed
         yield
-
 
 def matrix_ols_regression(y, X):
     """Performs OLS regression using matrix algebra with numpy."""
@@ -50,40 +43,25 @@ def matrix_ols_regression(y, X):
 
 
 def adf_results(series, freq="B", verbose=False):
-    """Returns ADF test outputs."""
     series = series.asfreq(freq)
     stat, pval, _, _, crit, _ = adfuller(series.dropna(), autolag='AIC')
-    # Micro-decision print for ADF
     if verbose:
         print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
-    return {
-        'stat': stat,
-        'pvalue': pval,
-        **{f'crit_{k}': v for k, v in crit.items()}
-    }
-
+    return {'stat': stat, 'pvalue': pval, **{f'crit_{k}': v for k, v in crit.items()}}
 
 def kpss_results(series, freq="B", verbose=False):
-    """Returns KPSS test outputs."""
     series = series.asfreq(freq)
     stat, pval, _, crit = kpss(series.dropna(), regression='c', nlags='auto')
     if verbose:
         print(f"KPSS(p={pval:.3f}) → {'non-stationary' if pval < 0.05 else 'stationary'}")
-    return {
-        'stat': stat,
-        'pvalue': pval,
-        **{f'crit_{k}': v for k, v in crit.items()}
-    }
+    return {'stat': stat, 'pvalue': pval, **{f'crit_{k}': v for k, v in crit.items()}}
 
 def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
-    """Returns hedge ratio and ADF p-value on residuals, plus spread if cointegrated."""
-    # Ensure frequency is set
     df = df.asfreq(freq)
     x0 = sm.add_constant(df[x])
     model = sm.OLS(df[y], x0).fit()
-    beta = model.params[x]
-    alpha = model.params['const']
-    spread = model.resid  # Use model residuals to include intercept
+    beta, alpha = model.params[x], model.params['const']
+    spread = model.resid
     pval = adfuller(spread.dropna(), maxlag=maxlag, autolag=None)[1]
     if verbose:
         print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
@@ -91,56 +69,36 @@ def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
 
 
 def engle_granger_bidirectional(df, a, b, maxlag=1, freq="B", verbose=False):
-    """
-    Run EG in both directions; keep the residual with the lower p-value.
-    Returns results w.r.t. 'a' as dependent variable.
-    """
     r_ab = engle_granger(df, a, b, maxlag=maxlag, freq=freq, verbose=verbose)
     r_ba = engle_granger(df, b, a, maxlag=maxlag, freq=freq, verbose=verbose)
     
     if r_ab['eg_pvalue'] <= r_ba['eg_pvalue']:
         return r_ab
     
-    # Convert back to a spread defined as a - beta*b - alpha
-    # Need to recompute spread with proper intercept
     df = df.asfreq(freq)
     x0 = sm.add_constant(df[a])
     model_ba = sm.OLS(df[b], x0).fit()
-    beta_ba = model_ba.params[a]
-    alpha_ba = model_ba.params['const']
+    beta_ba, alpha_ba = model_ba.params[a], model_ba.params['const']
     
     beta_ab = 1.0 / beta_ba if beta_ba != 0 else np.nan
     alpha_ab = -alpha_ba / beta_ba if beta_ba != 0 else np.nan
     spread = df[a] - beta_ab * df[b] - alpha_ab if np.isfinite(beta_ab) and np.isfinite(alpha_ab) else None
     
-    return {
-        'beta': float(beta_ab), 
-        'alpha': float(alpha_ab),
-        'eg_pvalue': float(r_ba['eg_pvalue']), 
-        'spread': spread, 
-        'maxlag': int(maxlag)
-    }
+    return {'beta': float(beta_ab), 'alpha': float(alpha_ab), 'eg_pvalue': float(r_ba['eg_pvalue']), 
+            'spread': spread, 'maxlag': int(maxlag)}
 
 
 def analyze_error_correction_model(y, x, spread, freq="B"):
-    """
-    Error-Correction Model (ECM) returns the coefficient and p-value of the error term.
-    """
     y, x, spread = y.asfreq(freq), x.asfreq(freq), spread.asfreq(freq)
-    ec_term = spread.shift(1).dropna() # lag spread by 1 period
-    delta_y, delta_x = y.diff().dropna(), x.diff().dropna() # difference to original
-    aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna() # Align all series to the same index
+    ec_term = spread.shift(1).dropna()
+    delta_y, delta_x = y.diff().dropna(), x.diff().dropna()
+    aligned_data = pd.concat([delta_y, delta_x, ec_term], axis=1).dropna()
     aligned_data.columns = ['delta_y', 'delta_x', 'ec_term']
-    X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']]) # regress on error term
-    y_ecm = aligned_data['delta_y']
-    model = sm.OLS(y_ecm, X_ecm).fit()
-    ec_coeff = model.params['ec_term']
-    ec_pvalue = model.pvalues['ec_term']
-    
-    return {'ecm_coeff': ec_coeff, 'ecm_pvalue': ec_pvalue}
+    X_ecm = sm.add_constant(aligned_data[['delta_x', 'ec_term']])
+    model = sm.OLS(aligned_data['delta_y'], X_ecm).fit()
+    return {'ecm_coeff': model.params['ec_term'], 'ecm_pvalue': model.pvalues['ec_term']}
 
 def ou_params(spread, freq="B"):
-    """Returns OU mu, theta, and half-life."""
     spread = spread.asfreq(freq)
     dS = spread.diff().dropna()
     S1 = spread.shift(1).dropna()
@@ -150,8 +108,7 @@ def ou_params(spread, freq="B"):
     theta = -model.params['S1']
     mu = model.params['const'] / theta
     hl = np.log(2) / theta
-    sigma_eq = spread.std()
-    return {'ou_mu': mu, 'ou_theta': theta, 'OU_HalfLife': hl, 'ou_sigma': sigma_eq}
+    return {'ou_mu': mu, 'ou_theta': theta, 'OU_HalfLife': hl, 'ou_sigma': spread.std()}
 
 
 def johansen(df, freq="B", det_order=0):
@@ -198,38 +155,24 @@ def kalman_hedge(df, y, x, freq="B"):
 
 
 def select_var_order(df, maxlags=10, trend='c', freq="B"):
-    """
-    Multivariate time series df, fit VAR(p) for p=1..maxlags
-    """
-    # Ensure frequency is set
     df = df.asfreq(freq)
     records = []
     for p in range(1, maxlags+1):
         model = VAR(df)
         try:
             res = model.fit(p, trend=trend)
+            eigs = res.roots
+            records.append({
+                'lag': p, 'aic': res.aic, 'bic': res.bic, 'hqic': res.hqic,
+                'stable': all(abs(r) < 1 for r in eigs), 'eigenvalues': eigs
+            })
         except Exception:
-            # Skip failing lag orders silently
             continue
-
-        # companion‐matrix roots = VAR stability eigenvalues
-        eigs = res.roots
-        is_stable = all(abs(r) < 1 for r in eigs)
-
-        records.append({
-            'lag': p,
-            'aic': res.aic,
-            'bic': res.bic,
-            'hqic': res.hqic,
-            'stable': is_stable,
-            'eigenvalues': eigs
-        })
-
+    
     results_df = pd.DataFrame(records)
-    best_aic   = int(results_df.loc[results_df['aic'].idxmin(),  'lag'])
-    best_bic   = int(results_df.loc[results_df['bic'].idxmin(),  'lag'])
-    best_hqic  = int(results_df.loc[results_df['hqic'].idxmin(), 'lag'])
-
+    best_aic = int(results_df.loc[results_df['aic'].idxmin(), 'lag'])
+    best_bic = int(results_df.loc[results_df['bic'].idxmin(), 'lag'])
+    best_hqic = int(results_df.loc[results_df['hqic'].idxmin(), 'lag'])
     return results_df, best_aic, best_bic, best_hqic
 
 
@@ -340,53 +283,6 @@ def summarize_cointegration_tests(all_data: dict):
     return pd.DataFrame(records)
 
 
-def run_pair_backtests(
-    selected,
-    all_data,
-    z_list,
-    train_months,
-    test_months,
-    step_months
-):
-    """
-    Run nested cross-validation backtests on cointegrated pairs.
-    """
-    # Local import to avoid circular dependency at module import time
-    from backtest import nested_cv
-    results = []
-
-    for pair in selected:
-        df = all_data[pair]
-        y, x = df.columns
-
-        # Engle–Granger: obtain stationary spread
-        eg = engle_granger(df, y, x)
-        spread = eg['spread'].dropna()
-
-        # Estimate OU parameters on spread
-        ou = ou_params(spread)
-        mu_e = ou['ou_mu']
-        sigma_eq = ou['ou_sigma']
-        df_pair = pd.DataFrame({'spread': spread})
-
-        # Run nested cross‑validation
-        cv_df = nested_cv(
-            df_pair,
-            spread_col='spread',
-            mu_e=mu_e,
-            sigma_eq=sigma_eq,
-            z_list=z_list,
-            train_months=train_months,
-            test_months=test_months,
-            step_months=step_months
-        )
-
-        # Add pair column and append to results
-        cv_df['pair'] = pair
-        results.append(cv_df)
-
-    return pd.concat(results, ignore_index=True) if results else pd.DataFrame()
-
 
 def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
     """
@@ -452,29 +348,21 @@ def za_test(series, trim=0.1, lags=None, model='trend'):
 
 
 def analyze_regression_var_summary(all_data):
-    """
-    Analyze regression R^2 and VAR model order selection for all data groups.
-    """
     reg_var_summary = []
     for name, df in all_data.items():
-        y = df.iloc[:,0]
-        X = sm.add_constant(df.iloc[:,1:])
+        y = df.iloc[:, 0]
+        X = sm.add_constant(df.iloc[:, 1:])
         beta = matrix_ols_regression(y.values, X.values)
         preds = X.values @ beta
         r2 = 1 - ((y.values - preds)**2).sum() / ((y.values - y.mean())**2).sum()
 
         var_df, best_aic, best_bic, best_hqic = select_var_order(df.dropna())
-        eigvals = var_df.loc[var_df['lag']==best_aic, 'eigenvalues'].iloc[0]
-        eigvals_magnitude = [np.abs(x) for x in eigvals]
-        eigvals_str = ' '.join([f'{abs(x):.3f}' for x in eigvals_magnitude])
+        eigvals = var_df.loc[var_df['lag'] == best_aic, 'eigenvalues'].iloc[0]
+        eigvals_str = ' '.join([f'{abs(x):.3f}' for x in eigvals])
 
         reg_var_summary.append({
-            'group': name,
-            'r_squared': r2,
-            'best_aic': best_aic,
-            'best_bic': best_bic,
-            'best_hqic': best_hqic,
-            'eigenvalues': eigvals_str
+            'group': name, 'r_squared': r2, 'best_aic': best_aic, 'best_bic': best_bic,
+            'best_hqic': best_hqic, 'eigenvalues': eigvals_str
         })
     return pd.DataFrame(reg_var_summary)
 

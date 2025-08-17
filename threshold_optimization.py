@@ -2,50 +2,26 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def backtest_spread(e: pd.Series,
-                    mu: float,
-                    sigma: float,
-                    beta: float,
-                    y: pd.Series,
-                    x: pd.Series,
-                    Z: float,
-                    cost: float = 0.0,
-                    normalize: bool = False
-                   ):
-    """
-    Backtest a simple mean-reversion strategy on the spread e_t.
-
-    Implementation note:
-    - Uses spread-based returns: ret_t = position_{t-1} * Δe_t - cost * turnover_t
-      This avoids inflated leg-level P&L from front-month futures roll gaps.
-    - If normalize=True, uses Δz_t (i.e., Δ(e_t/σ)) for dimensionless returns.
-    """
+def backtest_spread(e: pd.Series, mu: float, sigma: float, beta: float, y: pd.Series, x: pd.Series, 
+                   Z: float, cost: float = 0.0, normalize: bool = False):
     e = pd.Series(e).astype(float).dropna()
-    mu = float(mu)
-    sigma = float(sigma) if np.isfinite(sigma) and sigma != 0 else np.nan
+    mu, sigma = float(mu), float(sigma) if np.isfinite(sigma) and sigma != 0 else np.nan
 
     upper = mu + Z * sigma if np.isfinite(sigma) else np.nan
     lower = mu - Z * sigma if np.isfinite(sigma) else np.nan
 
-    # Build entry signals at static bands μ ± Z·σ
     signals = pd.Series(0, index=e.index, dtype=int)
     if np.isfinite(upper) and np.isfinite(lower):
         signals[e < lower] = 1
         signals[e > upper] = -1
     else:
-        # Fallback: no bands available -> flat
         return {'N_trades': 0, 'cum_PnL': 0.0, 'avg_PnL': np.nan, 'avg_duration': np.nan}
 
     prev_sig = signals.shift(1).fillna(0).astype(int)
     de = e.diff().fillna(0.0)
 
-    # Optionally normalize by sigma to get dimensionless PnL
-    if normalize and np.isfinite(sigma) and sigma > 0:
-        dX = de / sigma
-    else:
-        dX = de
+    dX = de / sigma if normalize and np.isfinite(sigma) and sigma > 0 else de
 
-    # Transaction costs applied on changes in position (turnover)
     turn = (signals - prev_sig).abs().astype(float)
     ret = prev_sig.astype(float) * dX - cost * turn
 

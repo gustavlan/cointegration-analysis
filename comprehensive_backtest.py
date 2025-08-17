@@ -9,9 +9,6 @@ warnings.filterwarnings('ignore')
 
 
 def split_train_test(data, train_ratio=0.6, train_end_date=None):
-    """
-    Split time series data into training and testing periods.
-    """
     if train_end_date is not None:
         split_date = pd.to_datetime(train_end_date)
         train_data = data[data.index <= split_date]
@@ -22,24 +19,13 @@ def split_train_test(data, train_ratio=0.6, train_end_date=None):
         test_data = data.iloc[split_idx:]
         split_date = train_data.index[-1]
     
-    return {
-        'train_data': train_data,
-        'test_data': test_data,
-        'split_date': split_date,
-        'train_size': len(train_data),
-        'test_size': len(test_data)
-    }
-
+    return {'train_data': train_data, 'test_data': test_data, 'split_date': split_date,
+            'train_size': len(train_data), 'test_size': len(test_data)}
 
 def estimate_cointegration(price1, price2, add_constant=True):
-    """
-    Estimate cointegration relationship using Engle-Granger approach.
-    """
-    # Align series
     aligned_data = pd.concat([price1, price2], axis=1).dropna()
     y, x = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
     
-    # Run cointegration regression
     if add_constant:
         x_reg = sm.add_constant(x)
         model = sm.OLS(y, x_reg).fit()
@@ -48,52 +34,28 @@ def estimate_cointegration(price1, price2, add_constant=True):
         model = sm.OLS(y, x).fit()
         alpha, beta = 0, model.params[0]
     
-    # Compute spread and residuals
     spread = y - alpha - beta * x
+    adf_pvalue = adfuller(spread.dropna(), maxlag=1)[1]
     
-    # Test residuals for stationarity
-    adf_result = adfuller(spread.dropna(), maxlag=1)
-    adf_pvalue = adf_result[1]
-    
-    return {
-        'alpha': alpha,
-        'beta': beta,
-        'spread': spread,
-        'residuals': spread,
-        'adf_pvalue': adf_pvalue,
-        'r_squared': model.rsquared,
-        'model': model
-    }
-
+    return {'alpha': alpha, 'beta': beta, 'spread': spread, 'residuals': spread,
+            'adf_pvalue': adf_pvalue, 'r_squared': model.rsquared, 'model': model}
 
 def generate_trading_signals(spread, z_threshold=2.0, exit_threshold=0.0):
-    """
-    Generate trading signals based on spread z-score.
-    """
-    # Compute z-score
     mean_spread = spread.mean()
     std_spread = spread.std()
     z_scores = (spread - mean_spread) / std_spread
     
-    # Generate position signals vectorially
-    positions = np.where(z_scores > z_threshold, -1,  # Short spread (short asset1, long asset2)
-                np.where(z_scores < -z_threshold, 1,   # Long spread (long asset1, short asset2)
-                0))  # No position
-    
+    positions = np.where(z_scores > z_threshold, -1,
+                np.where(z_scores < -z_threshold, 1, 0))
     positions = pd.Series(positions, index=spread.index, name='positions')
     
-    # Entry and exit signals
     entry_signals = (np.abs(z_scores) >= z_threshold).astype(int)
     exit_signals = (np.abs(z_scores) <= exit_threshold).astype(int)
     
-    return {
-        'positions': positions,
-        'z_scores': z_scores,
-        'entry_signals': pd.Series(entry_signals, index=spread.index),
-        'exit_signals': pd.Series(exit_signals, index=spread.index),
-        'mean_spread': mean_spread,
-        'std_spread': std_spread
-    }
+    return {'positions': positions, 'z_scores': z_scores,
+            'entry_signals': pd.Series(entry_signals, index=spread.index),
+            'exit_signals': pd.Series(exit_signals, index=spread.index),
+            'mean_spread': mean_spread, 'std_spread': std_spread}
 
 
 def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
