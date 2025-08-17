@@ -168,12 +168,15 @@ def compute_rolling_sharpe(returns, window=252, risk_free_rate=0.0):
     return rolling_sharpe
 
 
-def compute_rolling_beta(strategy_returns, market_returns, window=252):
+def compute_rolling_beta(strategy_returns, market_returns, window=252, risk_free_rate=0.0):
     """
-    Compute rolling beta against market benchmark.
+    Compute rolling beta against market benchmark using excess returns.
     """
+    # Convert to excess returns
+    excess_market_returns = market_returns - risk_free_rate/252  # Daily risk-free rate
+    
     # Align series
-    aligned_data = pd.concat([strategy_returns, market_returns], axis=1).dropna()
+    aligned_data = pd.concat([strategy_returns, excess_market_returns], axis=1).dropna()
     strat_ret, mkt_ret = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
     
     # Rolling covariance and variance
@@ -642,9 +645,30 @@ def create_timeseries_splits(data, n_splits=5, test_size=0.2):
 
 
 def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5], 
-                                  n_splits=3, min_train_ratio=0.6, min_test_size=63):
+                                  n_splits=3, min_train_ratio=0.6, min_test_size=63,
+                                  return_artifacts=False, transaction_costs=0.002):
     """
     Run cross-validation backtest across multiple thresholds.
+    
+    Parameters:
+    -----------
+    price1, price2 : pd.Series
+        Price series for the two assets
+    z_thresholds : list
+        Z-score thresholds to test
+    n_splits : int
+        Number of CV splits (will be reduced if data insufficient)
+    min_train_ratio : float
+        Minimum training data ratio
+    min_test_size : int
+        Fixed test size in observations
+    return_artifacts : bool
+        If True, return full per-fold artifacts (returns, positions, etc.)
+        
+    Returns:
+    --------
+    pd.DataFrame : Results with same schema as before
+    dict : If return_artifacts=True, additional per-fold artifacts
     """
     # Align data
     data = pd.concat([price1, price2], axis=1).dropna()
@@ -654,6 +678,7 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
     splits = compute_ts_folds(data.index, n_splits, min_train_ratio, min_test_size)
     
     results = []
+    artifacts = {} if return_artifacts else None
     
     for split_idx, (train_idx, test_idx) in enumerate(splits):
         train_data = data.loc[train_idx]
@@ -676,6 +701,13 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
                 signal_result['positions'], coint_result['beta']
             )
             
+            # Apply transaction costs
+            if transaction_costs > 0:
+                position_changes = signal_result['positions'].diff().abs()
+                cost_series = position_changes * transaction_costs
+                returns_result['strategy_returns'] -= cost_series.shift(1).fillna(0)
+                returns_result['cumulative_returns'] = (1 + returns_result['strategy_returns']).cumprod()
+            
             # Calculate metrics
             strategy_ret = returns_result['strategy_returns']
             cumulative_ret = returns_result['cumulative_returns']
@@ -697,16 +729,59 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
                 'test_start': test_idx[0],
                 'test_end': test_idx[-1]
             })
+            
+            # Store artifacts if requested
+            if return_artifacts:
+                key = (split_idx, z_thresh)
+                artifacts[key] = {
+                    'strategy_returns': strategy_ret,
+                    'cumulative_returns': cumulative_ret,
+                    'positions': signal_result['positions'],
+                    'spread': test_spread,
+                    'alpha': coint_result['alpha'],
+                    'beta': coint_result['beta'],
+                    'test_data': test_data,
+                    'drawdowns': compute_drawdowns(cumulative_ret)
+                }
     
-    return pd.DataFrame(results)
+    df_results = pd.DataFrame(results)
+    
+    if return_artifacts:
+        return df_results, artifacts
+    else:
+        return df_results
 
 
 def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3, 
-                     min_train_ratio=0.6, min_test_size=63):
+                     min_train_ratio=0.6, min_test_size=63, return_artifacts=False,
+                     transaction_costs=0.002):
     """
     Run cross-validation backtest over multiple pairs.
+    
+    Parameters:
+    -----------
+    all_data : dict
+        Dictionary of pair_name -> DataFrame
+    selected : list
+        List of pair names to process
+    z_threshold_by_pair : dict
+        Dictionary of pair_name -> z_threshold
+    n_splits : int
+        Number of CV splits
+    min_train_ratio : float
+        Minimum training data ratio
+    min_test_size : int
+        Fixed test size in observations
+    return_artifacts : bool
+        If True, return full per-fold artifacts for stitching
+        
+    Returns:
+    --------
+    pd.DataFrame : Combined results with 'pair' column added
+    dict : If return_artifacts=True, artifacts by pair
     """
     all_results = []
+    all_artifacts = {} if return_artifacts else None
     
     for pair_name in selected:
         if pair_name not in all_data:
@@ -721,14 +796,30 @@ def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3,
         asset1, asset2 = df.columns
         z_thresh = z_threshold_by_pair.get(pair_name, 2.0)  # Default to 2.0
         
+        print(f"Running CV for {pair_name} with z_threshold={z_thresh}...")
+        
         try:
-            pair_results = run_cross_validation_backtest(
-                df[asset1], df[asset2],
-                z_thresholds=[z_thresh],  # Use only the specified threshold
-                n_splits=n_splits,
-                min_train_ratio=min_train_ratio,
-                min_test_size=min_test_size
-            )
+            if return_artifacts:
+                pair_results, pair_artifacts = run_cross_validation_backtest(
+                    df[asset1], df[asset2],
+                    z_thresholds=[z_thresh],  # Use only the specified threshold
+                    n_splits=n_splits,
+                    min_train_ratio=min_train_ratio,
+                    min_test_size=min_test_size,
+                    return_artifacts=True,
+                    transaction_costs=transaction_costs
+                )
+                all_artifacts[pair_name] = pair_artifacts
+            else:
+                pair_results = run_cross_validation_backtest(
+                    df[asset1], df[asset2],
+                    z_thresholds=[z_thresh],  # Use only the specified threshold
+                    n_splits=n_splits,
+                    min_train_ratio=min_train_ratio,
+                    min_test_size=min_test_size,
+                    return_artifacts=False,
+                    transaction_costs=transaction_costs
+                )
             
             # Add pair column
             pair_results['pair'] = pair_name
@@ -742,14 +833,22 @@ def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3,
         df = pd.concat(all_results, ignore_index=True)
         # Reorder columns: pair first, hedge_ratio before total_return
         cols = ['pair'] + [c for c in df.columns if c != 'pair']
-        return df[cols]
+        df_final = df[cols]
+        
+        if return_artifacts:
+            return df_final, all_artifacts
+        else:
+            return df_final
     else:
-        return pd.DataFrame()
+        if return_artifacts:
+            return pd.DataFrame(), {}
+        else:
+            return pd.DataFrame()
 
 
-def summarize_cv(cv_df):
+def summarize_cv(cv_df, all_data=None, selected=None):
     """
-    Summarize cross-validation results in the same format as the notebook.
+    Summarize cross-validation results including half-life information.
     """
     if 'pair' in cv_df.columns:
         group_cols = ['pair', 'z_threshold']
@@ -766,4 +865,302 @@ def summarize_cv(cv_df):
     # Flatten column names to match notebook format
     summary.columns = ['_'.join(col).strip() for col in summary.columns]
     
+    # Add half-life information if data is available
+    if all_data is not None and selected is not None and 'pair' in cv_df.columns:
+        from coint_tests import engle_granger, ou_params
+        half_lives = []
+        thetas = []
+        
+        for pair in cv_df['pair'].unique():
+            if pair in all_data:
+                df = all_data[pair]
+                y_col, x_col = df.columns[:2]
+                eg = engle_granger(df, y_col, x_col)
+                if eg['spread'] is not None:
+                    ou = ou_params(eg['spread'])
+                    half_lives.append((pair, ou['OU_HalfLife']))
+                    thetas.append((pair, ou['ou_theta']))
+        
+        # Add to summary if we have half-life data
+        if half_lives:
+            hl_df = pd.DataFrame(half_lives, columns=['pair', 'half_life'])
+            theta_df = pd.DataFrame(thetas, columns=['pair', 'theta'])
+            
+            # Merge with summary (reset index to access pair column)
+            summary_reset = summary.reset_index()
+            summary_reset = summary_reset.merge(hl_df, on='pair', how='left')
+            summary_reset = summary_reset.merge(theta_df, on='pair', how='left')
+            summary = summary_reset.set_index(group_cols)
+    
     return summary
+
+
+def stitch_cv_folds(cv_artifacts, pair_name, z_threshold):
+    """
+    Stitch together CV fold results chronologically for continuous analysis.
+    
+    Parameters:
+    -----------
+    cv_artifacts : dict
+        Artifacts from run_cv_over_pairs with return_artifacts=True
+    pair_name : str
+        Name of the pair to stitch
+    z_threshold : float
+        Z threshold to filter for
+        
+    Returns:
+    --------
+    dict : Stitched results with continuous time series
+    """
+    if pair_name not in cv_artifacts:
+        raise ValueError(f"Pair {pair_name} not found in artifacts")
+    
+    pair_artifacts = cv_artifacts[pair_name]
+    
+    # Get fold keys for this z_threshold
+    fold_keys = [(split, z) for (split, z) in pair_artifacts.keys() if z == z_threshold]
+    fold_keys.sort()  # Sort by split number
+    
+    if not fold_keys:
+        raise ValueError(f"No artifacts found for pair {pair_name} and z_threshold {z_threshold}")
+    
+    # Collect time series from each fold
+    all_returns = []
+    all_positions = []
+    all_spreads = []
+    all_cumulative = []
+    fold_boundaries = []
+    
+    for split, z in fold_keys:
+        artifacts = pair_artifacts[(split, z)]
+        
+        # Add fold boundary marker (NaN to break continuity for rolling stats)
+        if all_returns:  # Not the first fold
+            boundary_date = artifacts['strategy_returns'].index[0]
+            fold_boundaries.append(boundary_date)
+            
+            # Insert NaN at fold boundary
+            all_returns.append(pd.Series([np.nan], index=[boundary_date]))
+            all_positions.append(pd.Series([0], index=[boundary_date]))
+            all_spreads.append(pd.Series([np.nan], index=[boundary_date]))
+        
+        # Append fold data
+        all_returns.append(artifacts['strategy_returns'])
+        all_positions.append(artifacts['positions'])
+        all_spreads.append(artifacts['spread'])
+        
+        # For cumulative returns, we need to chain them properly
+        if all_cumulative:
+            # Start new fold cumulative from the last value of previous fold
+            prev_final = all_cumulative[-1].iloc[-1] if len(all_cumulative[-1]) > 0 else 1.0
+            fold_cumulative = prev_final * artifacts['cumulative_returns']
+        else:
+            fold_cumulative = artifacts['cumulative_returns']
+            
+        all_cumulative.append(fold_cumulative)
+    
+    # Concatenate all series
+    stitched_returns = pd.concat(all_returns).sort_index()
+    stitched_positions = pd.concat(all_positions).sort_index()
+    stitched_spreads = pd.concat(all_spreads).sort_index()
+    stitched_cumulative = pd.concat(all_cumulative).sort_index()
+    
+    # Compute overall drawdowns on stitched equity curve
+    stitched_drawdowns = compute_drawdowns(stitched_cumulative)
+    
+    # Performance metrics on stitched series (excluding NaNs)
+    clean_returns = stitched_returns.dropna()
+    total_return = stitched_cumulative.iloc[-1] - 1 if len(stitched_cumulative) > 0 else 0
+    annualized_return = (1 + total_return) ** (252 / len(clean_returns)) - 1 if len(clean_returns) > 0 else 0
+    annualized_vol = clean_returns.std() * np.sqrt(252)
+    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
+    
+    return {
+        'strategy_returns': stitched_returns,
+        'cumulative_returns': stitched_cumulative,
+        'positions': stitched_positions,
+        'spread': stitched_spreads,
+        'drawdowns': stitched_drawdowns,
+        'fold_boundaries': fold_boundaries,
+        'performance_metrics': {
+            'total_return': total_return,
+            'annualized_return': annualized_return,
+            'annualized_volatility': annualized_vol,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': stitched_drawdowns['max_drawdown'],
+            'num_trades': (stitched_positions.diff().abs() > 0).sum(),
+        'num_folds': len(fold_keys)
+    }
+}
+
+
+def run_systematic_backtest(cv_artifacts, selected_pairs, summary_df):
+    """
+    Run systematic backtesting by stitching CV fold results.
+    
+    Parameters:
+    -----------
+    cv_artifacts : dict
+        Artifacts from run_cv_over_pairs with return_artifacts=True
+    selected_pairs : list
+        List of pair names to process
+    summary_df : pd.DataFrame
+        DataFrame with pair names and their best Z thresholds
+        
+    Returns:
+    --------
+    tuple: (stitched_results, systematic_df)
+        - stitched_results: dict with stitched data for each pair
+        - systematic_df: DataFrame with systematic performance metrics
+    """
+    stitched_results = {}
+    systematic_performance = []
+    
+    for pair in selected_pairs:
+        pair_z = summary_df.set_index("pair").loc[pair, "best_Z"]
+        
+        try:
+            # Stitch the CV folds for this pair and z-threshold
+            stitched = stitch_cv_folds(cv_artifacts, pair, pair_z)
+            stitched_results[pair] = stitched
+            
+            # Collect performance metrics
+            perf = stitched['performance_metrics'].copy()
+            perf['pair'] = pair
+            perf['z_threshold'] = pair_z
+            systematic_performance.append(perf)
+            
+        except Exception as e:
+            print(f"Warning: Failed to stitch {pair}: {e}")
+            continue
+    
+    # Create systematic backtest performance summary
+    systematic_df = pd.DataFrame(systematic_performance)
+    if not systematic_df.empty:
+        systematic_df = systematic_df.set_index('pair')
+    
+    return stitched_results, systematic_df
+
+
+def rolling_cointegration_analysis(all_data, selected_pairs, best_z_by_pair):
+    """
+    Rolling Cointegration Re-estimation Analysis
+    """
+    # Define configs strictly matching the brief: 5–8m train, 10–15d step
+    rolling_configs = {
+        "5m_window_2w_step": (105, 10),
+        "6m_window_2w_step": (126, 10), 
+        "8m_window_3w_step": (168, 15),
+    }
+    
+    # Build results
+    rolling_results = {}
+    static_results = {}
+    
+    for pair_name in selected_pairs:
+        df = all_data[pair_name]
+        a1, a2 = df.columns
+        z_thresh = float(best_z_by_pair.get(pair_name, 1.0))
+        
+        # Static 60/40 for reference
+        static_results[pair_name] = backtest_pair_strategy(
+            df[a1], df[a2], z_threshold=z_thresh, train_ratio=0.6
+        )
+        
+        # Rolling variants using existing rolling cointegration function
+        pair_roll = {}
+        for cfg_name, (win, step) in rolling_configs.items():
+            pair_roll[cfg_name] = backtest_with_rolling_cointegration(
+                df[a1], df[a2],
+                z_threshold=z_thresh,
+                window_size=win,
+                step_size=step,
+                train_ratio=0.6
+            )
+        rolling_results[pair_name] = pair_roll
+    
+    # Build report
+    rows = []
+    
+    def fmt_pct(x): return f"{x:.1%}"
+    def fmt2(x): return f"{x:.2f}"
+    
+    for pair_name, cfg_map in rolling_results.items():
+        sm = static_results[pair_name]["performance_metrics"]
+        rows.append({
+            "Pair": pair_name,
+            "Strategy": "Static",
+            "Total_Return": fmt_pct(sm["total_return"]),
+            "Sharpe": fmt2(sm["sharpe_ratio"]),
+            "Max_DD": fmt_pct(sm["max_drawdown"])
+        })
+        for cfg_name, res in cfg_map.items():
+            pm = res["performance_metrics"]
+            rows.append({
+                "Pair": pair_name,
+                "Strategy": cfg_name.replace("_", " ").title(),
+                "Total_Return": fmt_pct(pm["total_return"]),
+                "Sharpe": fmt2(pm["sharpe_ratio"]),
+                "Max_DD": fmt_pct(pm["max_drawdown"])
+            })
+    
+    return pd.DataFrame(rows)
+
+
+def adaptive_cointegration_analysis(all_data, selected_pairs, best_z_by_pair):
+    """
+    Kalman filter for adaptive estimation of EG Step 1 cointegrating weights.
+    """
+    results = {}
+    
+    for pair_name in selected_pairs:
+        df = all_data[pair_name]
+        y_series, x_series = df.iloc[:, 0], df.iloc[:, 1]
+        z_thresh = float(best_z_by_pair.get(pair_name, 1.0))
+        
+        # Static EG for comparison
+        static_result = backtest_pair_strategy(
+            y_series, x_series, z_threshold=z_thresh, train_ratio=0.6
+        )
+        
+        # Adaptive Kalman EG
+        kalman_result = backtest_with_kalman_filter(
+            y_series, x_series, z_threshold=z_thresh, train_ratio=0.6
+        )
+        
+        # Extract key metrics for comparison
+        static_beta = static_result['performance_metrics'].get('hedge_ratio', 'N/A')
+        initial_beta = kalman_result['performance_metrics']['initial_beta']
+        final_beta = kalman_result['performance_metrics']['final_beta']
+        beta_volatility = kalman_result['performance_metrics']['beta_volatility']
+        
+        results[pair_name] = {
+            'static_beta': static_beta,
+            'initial_beta': initial_beta, 
+            'final_beta': final_beta,
+            'beta_drift': final_beta - initial_beta,
+            'beta_volatility': beta_volatility,
+            'static_sharpe': static_result['performance_metrics']['sharpe_ratio'],
+            'kalman_sharpe': kalman_result['performance_metrics']['sharpe_ratio'],
+            'adaptive_betas': kalman_result['adaptive_betas'],
+            'adaptive_alphas': kalman_result['adaptive_alphas']
+        }
+    
+    # Create summary table
+    summary_rows = []
+    for pair_name, res in results.items():
+        summary_rows.append({
+            'Pair': pair_name,
+            'Static_Beta': f"{res['static_beta']:.4f}" if isinstance(res['static_beta'], (int, float)) else str(res['static_beta']),
+            'Initial_Beta': f"{res['initial_beta']:.4f}",
+            'Final_Beta': f"{res['final_beta']:.4f}",
+            'Beta_Drift': f"{res['beta_drift']:.4f}",
+            'Beta_Vol': f"{res['beta_volatility']:.4f}",
+            'Static_Sharpe': f"{res['static_sharpe']:.2f}",
+            'Kalman_Sharpe': f"{res['kalman_sharpe']:.2f}"
+        })
+    
+    return {
+        'summary_df': pd.DataFrame(summary_rows),
+        'detailed_results': results
+    }
