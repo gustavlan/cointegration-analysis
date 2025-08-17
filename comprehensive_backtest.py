@@ -7,6 +7,40 @@ from scipy import stats
 import warnings
 warnings.filterwarnings('ignore')
 
+# Constants
+TRADING_DAYS_PER_YEAR = 252
+
+
+def calculate_performance_metrics(strategy_returns, cumulative_returns=None):
+    if cumulative_returns is None:
+        cumulative_returns = (1 + strategy_returns).cumprod()
+    
+    if len(strategy_returns) == 0:
+        return {
+            'total_return': 0,
+            'annualized_return': 0,
+            'annualized_volatility': 0,
+            'sharpe_ratio': 0
+        }
+    
+    total_return = cumulative_returns.iloc[-1] - 1
+    annualized_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / len(strategy_returns)) - 1
+    annualized_vol = strategy_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
+    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
+    
+    return {
+        'total_return': total_return,
+        'annualized_return': annualized_return,
+        'annualized_volatility': annualized_vol,
+        'sharpe_ratio': sharpe_ratio
+    }
+
+
+def align_price_data(price1, price2):
+    data = pd.concat([price1, price2], axis=1).dropna()
+    data.columns = ['asset1', 'asset2']
+    return data
+
 
 def split_train_test(data, train_ratio=0.6, train_end_date=None):
     if train_end_date is not None:
@@ -40,7 +74,7 @@ def estimate_cointegration(price1, price2, add_constant=True):
     return {'alpha': alpha, 'beta': beta, 'spread': spread, 'residuals': spread,
             'adf_pvalue': adf_pvalue, 'r_squared': model.rsquared, 'model': model}
 
-def generate_trading_signals(spread, z_threshold=2.0, exit_threshold=0.0):
+def generate_trading_signals(spread, z_threshold=2.0):
     mean_spread = spread.mean()
     std_spread = spread.std()
     z_scores = (spread - mean_spread) / std_spread
@@ -50,11 +84,9 @@ def generate_trading_signals(spread, z_threshold=2.0, exit_threshold=0.0):
     positions = pd.Series(positions, index=spread.index, name='positions')
     
     entry_signals = (np.abs(z_scores) >= z_threshold).astype(int)
-    exit_signals = (np.abs(z_scores) <= exit_threshold).astype(int)
     
     return {'positions': positions, 'z_scores': z_scores,
             'entry_signals': pd.Series(entry_signals, index=spread.index),
-            'exit_signals': pd.Series(exit_signals, index=spread.index),
             'mean_spread': mean_spread, 'std_spread': std_spread}
 
 
@@ -102,40 +134,24 @@ def compute_drawdowns(cumulative_returns):
     }
 
 
-def compute_rolling_sharpe(returns, window=252, risk_free_rate=0.0):
+def compute_rolling_sharpe(returns, window=TRADING_DAYS_PER_YEAR, risk_free_rate=0.0):
     """
     Compute rolling Sharpe ratio.
-    
-    Parameters:
-    -----------
-    returns : pd.Series
-        Strategy returns series
-    window : int
-        Rolling window size (default 252 for annual)
-    risk_free_rate : float
-        Risk-free rate (annualized)
-        
-    Returns:
-    --------
-    pd.Series : Rolling Sharpe ratio
     """
-    excess_returns = returns - risk_free_rate / 252  # Convert to daily
-    
+    excess_returns = returns - risk_free_rate / TRADING_DAYS_PER_YEAR  # Convert to daily
     rolling_mean = excess_returns.rolling(window=window).mean()
     rolling_std = excess_returns.rolling(window=window).std()
-    
-    # Annualize
-    rolling_sharpe = (rolling_mean / rolling_std) * np.sqrt(252)
+    rolling_sharpe = (rolling_mean / rolling_std) * np.sqrt(TRADING_DAYS_PER_YEAR)
     
     return rolling_sharpe
 
 
-def compute_rolling_beta(strategy_returns, market_returns, window=252, risk_free_rate=0.0):
+def compute_rolling_beta(strategy_returns, market_returns, window=TRADING_DAYS_PER_YEAR, risk_free_rate=0.0):
     """
     Compute rolling beta against market benchmark using excess returns.
     """
     # Convert to excess returns
-    excess_market_returns = market_returns - risk_free_rate/252  # Daily risk-free rate
+    excess_market_returns = market_returns - risk_free_rate/TRADING_DAYS_PER_YEAR  # Daily risk-free rate
     
     # Align series
     aligned_data = pd.concat([strategy_returns, excess_market_returns], axis=1).dropna()
@@ -156,24 +172,14 @@ def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6,
     """
     Complete backtest of pairs trading strategy with train/test split.
     """
-    # Align data
-    data = pd.concat([price1, price2], axis=1).dropna()
-    data.columns = ['asset1', 'asset2']
-    
-    # Split train/test
+    data = align_price_data(price1, price2)
     split_result = split_train_test(data, train_ratio=train_ratio)
     train_data = split_result['train_data']
     test_data = split_result['test_data']
     
     # Estimate cointegration on training data
-    coint_result = estimate_cointegration(
-        train_data['asset1'], train_data['asset2'], add_constant=add_constant
-    )
-    
-    # Generate test spread using training parameters
+    coint_result = estimate_cointegration(train_data['asset1'], train_data['asset2'], add_constant=add_constant)
     test_spread = test_data['asset1'] - coint_result['alpha'] - coint_result['beta'] * test_data['asset2']
-    
-    # Generate trading signals on test data
     signal_result = generate_trading_signals(test_spread, z_threshold=z_threshold)
     
     # Calculate strategy returns on test data
@@ -191,16 +197,10 @@ def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6,
     
     # Compute performance metrics
     drawdown_result = compute_drawdowns(returns_result['cumulative_returns'])
-    
-    # Summary statistics
     strategy_ret = returns_result['strategy_returns']
-    total_return = returns_result['cumulative_returns'].iloc[-1] - 1
-    annualized_return = (1 + total_return) ** (252 / len(strategy_ret)) - 1
-    annualized_vol = strategy_ret.std() * np.sqrt(252)
-    sharpe_ratio = (annualized_return) / annualized_vol if annualized_vol != 0 else 0
-    
+    perf_metrics = calculate_performance_metrics(strategy_ret, returns_result['cumulative_returns'])
     num_trades = signal_result['entry_signals'].sum()
-    avg_return_per_trade = strategy_ret.mean() if num_trades > 0 else 0
+    avg_return_per_trade = strategy_ret.mean()
     
     return {
         'split_info': split_result,
@@ -210,14 +210,11 @@ def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6,
         'drawdowns': drawdown_result,
         'test_spread': test_spread,
         'performance_metrics': {
-            'total_return': total_return,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_vol,
-            'sharpe_ratio': sharpe_ratio,
+            **perf_metrics,
             'max_drawdown': drawdown_result['max_drawdown'],
             'num_trades': int(num_trades),
             'avg_return_per_trade': avg_return_per_trade,
-            'win_rate': (strategy_ret > 0).mean() if len(strategy_ret) > 0 else 0
+            'win_rate': (strategy_ret > 0).mean()
         }
     }
 
@@ -228,11 +225,7 @@ def backtest_with_rolling_cointegration(price1, price2, z_threshold=2.0,
     """
     Backtest with rolling re-estimation of cointegration parameters.
     """
-    # Align data
-    data = pd.concat([price1, price2], axis=1).dropna()
-    data.columns = ['asset1', 'asset2']
-    
-    # Initial split for warmup period
+    data = align_price_data(price1, price2)
     split_result = split_train_test(data, train_ratio=train_ratio)
     test_start_idx = len(split_result['train_data'])
     
@@ -301,7 +294,6 @@ def backtest_with_rolling_cointegration(price1, price2, z_threshold=2.0,
         all_positions.loc[period_idx] = positions
         
         # Calculate returns for this period
-        # Use lagged positions to avoid look-ahead bias
         period_returns1 = period_data['asset1'].pct_change()
         period_returns2 = period_data['asset2'].pct_change()
         
@@ -322,10 +314,7 @@ def backtest_with_rolling_cointegration(price1, price2, z_threshold=2.0,
     drawdown_result = compute_drawdowns(cumulative_returns)
     
     # Performance metrics
-    total_return = cumulative_returns.iloc[-1] - 1 if len(cumulative_returns) > 0 else 0
-    annualized_return = (1 + total_return) ** (252 / len(all_returns)) - 1 if len(all_returns) > 0 else 0
-    annualized_vol = all_returns.std() * np.sqrt(252)
-    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
+    perf_metrics = calculate_performance_metrics(all_returns, cumulative_returns)
     
     return {
         'strategy_returns': all_returns,
@@ -335,10 +324,7 @@ def backtest_with_rolling_cointegration(price1, price2, z_threshold=2.0,
         'alpha_history': pd.Series(alpha_history, index=dates_history),
         'drawdowns': drawdown_result,
         'performance_metrics': {
-            'total_return': total_return,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_vol,
-            'sharpe_ratio': sharpe_ratio,
+            **perf_metrics,
             'max_drawdown': drawdown_result['max_drawdown'],
             'num_rebalances': len(beta_history)
         },
@@ -361,49 +347,24 @@ class KalmanPairsFilter:
         """
         # State: [beta, alpha]
         self.state = np.array([initial_beta, 0.0])
-        
-        # Error covariance
         self.P = np.eye(2) * 0.1
-        
-        # Process noise covariance
         self.Q = np.eye(2) * process_var
-        
-        # Observation noise variance
         self.R = observation_var
-        
-        # State transition (beta and alpha evolve as random walk)
         self.F = np.eye(2)
         
-        self.history = {
-            'beta': [],
-            'alpha': [],
-            'P_trace': []
-        }
+        self.history = {'beta': [], 'alpha': [], 'P_trace': []}
     
     def update(self, y, x):
         """
         Update filter with new observation.
         """
-        # Prediction step
         self.state = self.F @ self.state
         self.P = self.F @ self.P @ self.F.T + self.Q
-        
-        # Update step
         H = np.array([x, 1])  # Observation matrix [x, 1] for y = beta*x + alpha
-        
-        # Innovation
         innovation = y - H @ self.state
-        
-        # Innovation covariance
         S = H @ self.P @ H.T + self.R
-        
-        # Kalman gain
         K = self.P @ H.T / S
-        
-        # State update
         self.state = self.state + K * innovation
-        
-        # Covariance update
         self.P = (np.eye(2) - np.outer(K, H)) @ self.P
         
         # Store history
@@ -421,8 +382,7 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
 
     """
     # Align data
-    data = pd.concat([price1, price2], axis=1).dropna()
-    data.columns = ['asset1', 'asset2']
+    data = align_price_data(price1, price2)
     
     # Initial split
     split_result = split_train_test(data, train_ratio=train_ratio)
@@ -522,10 +482,7 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
     # Performance metrics
     drawdown_result = compute_drawdowns(cumulative_returns)
     
-    total_return = cumulative_returns.iloc[-1] - 1
-    annualized_return = (1 + total_return) ** (252 / len(strategy_returns)) - 1
-    annualized_vol = strategy_returns.std() * np.sqrt(252)
-    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
+    perf_metrics = calculate_performance_metrics(strategy_returns, cumulative_returns)
     
     return {
         'strategy_returns': strategy_returns,
@@ -538,10 +495,7 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
         'drawdowns': drawdown_result,
         'kalman_filter': kf,
         'performance_metrics': {
-            'total_return': total_return,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_vol,
-            'sharpe_ratio': sharpe_ratio,
+            **perf_metrics,
             'max_drawdown': drawdown_result['max_drawdown'],
             'initial_beta': initial_coint['beta'],
             'final_beta': adaptive_betas[-1] if adaptive_betas else initial_coint['beta'],
@@ -570,8 +524,6 @@ def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, ste
     
     # Reduce n_splits if needed
     actual_n_splits = min(n_splits, max_splits)
-    if actual_n_splits < n_splits:
-        print(f"Warning: Reduced n_splits from {n_splits} to {actual_n_splits} due to data constraints")
     
     splits = []
     for i in range(actual_n_splits):
@@ -596,45 +548,14 @@ def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, ste
     return splits
 
 
-def create_timeseries_splits(data, n_splits=5, test_size=0.2):
-    """
-    Create time series cross-validation splits.
-    Kept for backward compatibility.
-    """
-    # Use the robust fold generator with fixed test size
-    min_test_size = max(63, int(len(data) * test_size))  # At least 63 days or test_size ratio
-    return compute_ts_folds(data.index, n_splits, min_test_size=min_test_size)
-
-
 def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5], 
                                   n_splits=3, min_train_ratio=0.6, min_test_size=63,
                                   return_artifacts=False, transaction_costs=0.002):
     """
     Run cross-validation backtest across multiple thresholds.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    z_thresholds : list
-        Z-score thresholds to test
-    n_splits : int
-        Number of CV splits (will be reduced if data insufficient)
-    min_train_ratio : float
-        Minimum training data ratio
-    min_test_size : int
-        Fixed test size in observations
-    return_artifacts : bool
-        If True, return full per-fold artifacts (returns, positions, etc.)
-        
-    Returns:
-    --------
-    pd.DataFrame : Results with same schema as before
-    dict : If return_artifacts=True, additional per-fold artifacts
     """
     # Align data
-    data = pd.concat([price1, price2], axis=1).dropna()
-    data.columns = ['asset1', 'asset2']
+    data = align_price_data(price1, price2)
     
     # Create robust splits
     splits = compute_ts_folds(data.index, n_splits, min_train_ratio, min_test_size)
@@ -674,16 +595,15 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
             strategy_ret = returns_result['strategy_returns']
             cumulative_ret = returns_result['cumulative_returns']
             
-            total_return = cumulative_ret.iloc[-1] - 1 if len(cumulative_ret) > 0 else 0
-            sharpe = (strategy_ret.mean() / strategy_ret.std()) * np.sqrt(252) if strategy_ret.std() != 0 else 0
+            perf_metrics = calculate_performance_metrics(strategy_ret, cumulative_ret)
             max_dd = compute_drawdowns(cumulative_ret)['max_drawdown']
             
             results.append({
                 'split': split_idx,
                 'z_threshold': z_thresh,
                 'hedge_ratio': coint_result['beta'],
-                'total_return': total_return,
-                'sharpe_ratio': sharpe,
+                'total_return': perf_metrics['total_return'],
+                'sharpe_ratio': perf_metrics['sharpe_ratio'],
                 'max_drawdown': max_dd,
                 'num_trades': signal_result['entry_signals'].sum(),
                 'train_start': train_idx[0],
@@ -719,46 +639,20 @@ def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3,
                      transaction_costs=0.002):
     """
     Run cross-validation backtest over multiple pairs.
-    
-    Parameters:
-    -----------
-    all_data : dict
-        Dictionary of pair_name -> DataFrame
-    selected : list
-        List of pair names to process
-    z_threshold_by_pair : dict
-        Dictionary of pair_name -> z_threshold
-    n_splits : int
-        Number of CV splits
-    min_train_ratio : float
-        Minimum training data ratio
-    min_test_size : int
-        Fixed test size in observations
-    return_artifacts : bool
-        If True, return full per-fold artifacts for stitching
-        
-    Returns:
-    --------
-    pd.DataFrame : Combined results with 'pair' column added
-    dict : If return_artifacts=True, artifacts by pair
     """
     all_results = []
     all_artifacts = {} if return_artifacts else None
     
     for pair_name in selected:
         if pair_name not in all_data:
-            print(f"Warning: {pair_name} not found in all_data, skipping...")
             continue
             
         df = all_data[pair_name]
         if len(df.columns) != 2:
-            print(f"Warning: {pair_name} has {len(df.columns)} columns, expected 2, skipping...")
             continue
             
         asset1, asset2 = df.columns
         z_thresh = z_threshold_by_pair.get(pair_name, 2.0)  # Default to 2.0
-        
-        print(f"Running CV for {pair_name} with z_threshold={z_thresh}...")
         
         try:
             if return_artifacts:
@@ -788,7 +682,6 @@ def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3,
             all_results.append(pair_results)
             
         except Exception as e:
-            print(f"Error processing {pair_name}: {e}")
             continue
     
     if all_results:
@@ -860,19 +753,6 @@ def summarize_cv(cv_df, all_data=None, selected=None):
 def stitch_cv_folds(cv_artifacts, pair_name, z_threshold):
     """
     Stitch together CV fold results chronologically for continuous analysis.
-    
-    Parameters:
-    -----------
-    cv_artifacts : dict
-        Artifacts from run_cv_over_pairs with return_artifacts=True
-    pair_name : str
-        Name of the pair to stitch
-    z_threshold : float
-        Z threshold to filter for
-        
-    Returns:
-    --------
-    dict : Stitched results with continuous time series
     """
     if pair_name not in cv_artifacts:
         raise ValueError(f"Pair {pair_name} not found in artifacts")
@@ -932,10 +812,7 @@ def stitch_cv_folds(cv_artifacts, pair_name, z_threshold):
     
     # Performance metrics on stitched series (excluding NaNs)
     clean_returns = stitched_returns.dropna()
-    total_return = stitched_cumulative.iloc[-1] - 1 if len(stitched_cumulative) > 0 else 0
-    annualized_return = (1 + total_return) ** (252 / len(clean_returns)) - 1 if len(clean_returns) > 0 else 0
-    annualized_vol = clean_returns.std() * np.sqrt(252)
-    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
+    perf_metrics = calculate_performance_metrics(clean_returns, stitched_cumulative)
     
     return {
         'strategy_returns': stitched_returns,
@@ -945,10 +822,7 @@ def stitch_cv_folds(cv_artifacts, pair_name, z_threshold):
         'drawdowns': stitched_drawdowns,
         'fold_boundaries': fold_boundaries,
         'performance_metrics': {
-            'total_return': total_return,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_vol,
-            'sharpe_ratio': sharpe_ratio,
+            **perf_metrics,
             'max_drawdown': stitched_drawdowns['max_drawdown'],
             'num_trades': (stitched_positions.diff().abs() > 0).sum(),
         'num_folds': len(fold_keys)
@@ -959,21 +833,6 @@ def stitch_cv_folds(cv_artifacts, pair_name, z_threshold):
 def run_systematic_backtest(cv_artifacts, selected_pairs, summary_df):
     """
     Run systematic backtesting by stitching CV fold results.
-    
-    Parameters:
-    -----------
-    cv_artifacts : dict
-        Artifacts from run_cv_over_pairs with return_artifacts=True
-    selected_pairs : list
-        List of pair names to process
-    summary_df : pd.DataFrame
-        DataFrame with pair names and their best Z thresholds
-        
-    Returns:
-    --------
-    tuple: (stitched_results, systematic_df)
-        - stitched_results: dict with stitched data for each pair
-        - systematic_df: DataFrame with systematic performance metrics
     """
     stitched_results = {}
     systematic_performance = []
@@ -993,7 +852,6 @@ def run_systematic_backtest(cv_artifacts, selected_pairs, summary_df):
             systematic_performance.append(perf)
             
         except Exception as e:
-            print(f"Warning: Failed to stitch {pair}: {e}")
             continue
     
     # Create systematic backtest performance summary

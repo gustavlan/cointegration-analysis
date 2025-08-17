@@ -19,9 +19,7 @@ def backtest_spread(e: pd.Series, mu: float, sigma: float, beta: float, y: pd.Se
 
     prev_sig = signals.shift(1).fillna(0).astype(int)
     de = e.diff().fillna(0.0)
-
     dX = de / sigma if normalize and np.isfinite(sigma) and sigma > 0 else de
-
     turn = (signals - prev_sig).abs().astype(float)
     ret = prev_sig.astype(float) * dX - cost * turn
 
@@ -56,12 +54,7 @@ def backtest_spread(e: pd.Series, mu: float, sigma: float, beta: float, y: pd.Se
     avg = float(np.mean(trade_pnls)) if N > 0 else np.nan
     dur = float(np.mean(durations)) if N > 0 else np.nan
 
-    return {
-        'N_trades': N,
-        'cum_PnL': cum,
-        'avg_PnL': avg,
-        'avg_duration': dur
-    }
+    return {'N_trades': N, 'cum_PnL': cum, 'avg_PnL': avg, 'avg_duration': dur}
 
 def optimize_thresholds(e: pd.Series,
                         mu: float,
@@ -79,10 +72,7 @@ def optimize_thresholds(e: pd.Series,
                         normalize: bool = False
                        ):
     """
-    Sweep Z from Z_min to Z_max in steps of dZ,
-    backtest each, and return a df of results.
-    If use_ou=True and ou_mu/ou_sigma provided, use OU equilibrium parameters.
-    Otherwise use the provided sample mu/sigma.
+    Sweep Z from Z_min to Z_max in steps of dZ, backtest each, and return a df of results.
     """
     # Use OU parameters if specified and available
     if use_ou and ou_mu is not None and ou_sigma is not None:
