@@ -111,6 +111,27 @@ def ou_params(spread, freq="B"):
     return {'ou_mu': mu, 'ou_theta': theta, 'OU_HalfLife': hl, 'ou_sigma': spread.std()}
 
 
+def select_var_order(df, maxlags=10, trend='c', freq="B"):
+    """Select optimal VAR order using multiple information criteria."""
+    try:
+        df = df.asfreq(freq).dropna()
+        model = VAR(df)
+        results = model.select_order(maxlags=maxlags)
+        order_table = pd.DataFrame({
+            'AIC': [results.aic[lag] for lag in range(len(results.aic))],
+            'BIC': [results.bic[lag] for lag in range(len(results.bic))],
+            'HQIC': [results.hqic[lag] for lag in range(len(results.hqic))]
+        })
+        return (
+            order_table,
+            results.selected_orders['aic'],
+            results.selected_orders['bic'],
+            results.selected_orders['hqic']
+        )
+    except Exception:
+        return pd.DataFrame(), 1, 1, 1
+
+
 def johansen(df, freq="B", det_order=0):
     """
     Run Johansen cointegration test with adaptive lag selection.
@@ -174,158 +195,6 @@ def select_var_order(df, maxlags=10, trend='c', freq="B"):
     best_bic = int(results_df.loc[results_df['bic'].idxmin(), 'lag'])
     best_hqic = int(results_df.loc[results_df['hqic'].idxmin(), 'lag'])
     return results_df, best_aic, best_bic, best_hqic
-
-
-def subsample_cointegration(df, y, x, n_periods=4, min_obs=30):
-    """
-    Split df into n_periods equal length slices run Engle Granger + ECM on each
-    """
-    # compute period boundaries
-    idx = df.index.sort_values()
-    boundaries = pd.to_datetime(
-        np.linspace(idx[0].value, idx[-1].value, n_periods + 1).astype('int64')
-    )
-    
-    records = []
-    for i in range(n_periods):
-        start, end = boundaries[i], boundaries[i+1]
-        slice_df = df.loc[start:end].dropna()
-        if len(slice_df) < min_obs:
-            continue
-        
-        # Engle Granger on this slice
-        eg   = engle_granger(slice_df, y, x)
-        beta = eg['beta']
-        p_eg = eg['eg_pvalue']
-        
-        # If cointegrated, get ECM coeff; else NaNs
-        if eg['spread'] is not None:
-            ecm_res = analyze_error_correction_model(
-                slice_df[y], slice_df[x], eg['spread']
-            )
-            coeff, p_ec = ecm_res['ecm_coeff'], ecm_res['ecm_pvalue']
-        else:
-            coeff, p_ec = np.nan, np.nan
-        
-        records.append({
-            'period_start': start.date(),
-            'period_end':   end.date(),
-            'beta':         beta,
-            'eg_pvalue':    p_eg,
-            'ecm_coeff':    coeff,
-            'ecm_pvalue':   p_ec
-        })
-    
-    return pd.DataFrame(records)
-
-def summarize_cointegration_tests(all_data: dict):
-    """Perform cointegration tests more efficiently."""
-    records = []
-    
-    for group, df in all_data.items():
-        for asset in df.columns:
-            series = df[asset]
-            adf_res = adf_results(series)
-            kpss_res = kpss_results(series)
-            records.append({
-                'group': group, 'asset': asset,
-                **adf_res, **kpss_res
-            })
-        
-        n_assets = len(df.columns)
-        if n_assets == 2:
-            y, x = df.columns
-            # Combine EG test and related calculations
-            eg = engle_granger(df, y, x)
-            records.append({
-                'group': group,
-                'test': 'Engle-Granger',
-                'beta': eg['beta'],
-                'eg_pvalue': eg['eg_pvalue']
-            })
-
-            # Matrix OLS as an alternative hedge ratio
-            X0 = sm.add_constant(df[x])
-            mbeta = matrix_ols_regression(df[y].values, X0.values)
-            if mbeta is not None:
-                records.append({
-                    'group': group,
-                    'test': 'Matrix-OLS',
-                    'const': mbeta[0],
-                    'slope': mbeta[1]
-                })
-
-            # If cointegrated, estimate OU and ECM
-            if eg.get('spread') is not None:
-                ou = ou_params(eg['spread'])
-                records.append({'group': group, 'test': 'OU', **ou})
-
-                ecm = analyze_error_correction_model(df[y], df[x], eg['spread'])
-                records.append({'group': group, 'test': 'ECM', **ecm})
-
-            # Kalman filter summary for dynamic hedge ratio
-            kf = kalman_hedge(df, y, x)
-            records.append({
-                'group': group,
-                'test': 'Kalman',
-                'kf_beta_mean': kf['kf_beta'].mean()
-            })
-
-        elif n_assets == 3:
-            # Johansen test for triple cointegration
-            jres = johansen(df)
-            records.append({
-                'group': group,
-                'test': 'Johansen',
-                **jres
-            })
-
-    return pd.DataFrame(records)
-
-
-
-def multi_subperiod_stability_check(df, y_col, x_col, n_periods=5, maxlag=1):
-    """
-    Split into n_periods windows and run full ECM per window.
-    """
-    def process_subperiod(sub, y_col, x_col, maxlag):
-        """Helper function to process a single subperiod."""
-        try:
-            eg = engle_granger(sub, y_col, x_col, maxlag=maxlag, verbose=False)
-            spread = eg.get('spread')
-            if spread is None or spread.isna().all():
-                return None
-            ecm = analyze_error_correction_model(sub[y_col], sub[x_col], spread)
-            return {
-                'Period': f"{sub.index.min():%Y-%m-%d} to {sub.index.max():%Y-%m-%d}",
-                'β_ec': ecm.get('ecm_coeff', np.nan),
-                'p_value': ecm.get('ecm_pvalue', np.nan),
-                'Cointegrated?': 'Yes' if (ecm.get('ecm_pvalue', 1.0) < 0.05 and ecm.get('ecm_coeff', 0.0) < 0.0) else 'No',
-                'n_obs': len(sub)
-            }
-        except Exception:
-            return None
-
-    df_clean = df[[y_col, x_col]].dropna()
-    n = len(df_clean)
-    w = n // n_periods if n_periods > 0 else n
-    
-    rows = [
-        process_subperiod(df_clean.iloc[i*w:(i+1)*w], y_col, x_col, maxlag)
-        for i in range(n_periods)
-        if len(df_clean.iloc[i*w:(i+1)*w]) >= max(60, w // 2)
-    ]
-    
-    # Filter out None results and create DataFrame
-    rows = [row for row in rows if row is not None]
-    results_df = pd.DataFrame(rows)
-    overall_stable = bool((results_df['Cointegrated?'] == 'Yes').all()) if not results_df.empty else False
-    summary = {
-        'overall_stable': overall_stable,
-        'n_windows': int(len(results_df)),
-        'n_yes': int((results_df['Cointegrated?'] == 'Yes').sum()) if not results_df.empty else 0
-    }
-    return results_df, summary
 
 
 def za_test(series, trim=0.1, lags=None, model='trend'):
@@ -506,126 +375,90 @@ def analyze_ecm_timeslices(
 
 
 def analyze_johansen_triples(all_data):
-    """
-    Perform Johansen multivariate cointegration test for triple groups.
-    """
+    """Perform Johansen multivariate cointegration test for triple groups."""
     triple_groups = [k for k in all_data.keys() if 'triple' in k.lower()]
-
-    if triple_groups:
-        johansen_summary = []
+    if not triple_groups:
+        return pd.DataFrame()
+    
+    results = []
+    for triple_name in triple_groups:
+        df_triple = all_data[triple_name].dropna()
+        n_assets, data_points = len(df_triple.columns), len(df_triple)
         
-        for triple_name in triple_groups:
-            df_triple = all_data[triple_name].dropna()
-            
-            if len(df_triple.columns) >= 3 and len(df_triple) > 100:
-                try:
-                    johansen_result = johansen(df_triple)
-                    n_coint = johansen_result['johansen_n']
-                    first_eigenvec = [johansen_result.get(f'eig_{i}', 0) for i in range(len(df_triple.columns))]
-                    
-                    # Create spread using first eigenvector
-                    if n_coint > 0:
-                        spread_triple = sum(first_eigenvec[i] * df_triple.iloc[:, i] for i in range(len(first_eigenvec)))
-                        spread_vol = spread_triple.std()
-                    else:
-                        spread_vol = np.nan
-                    
-                    johansen_summary.append({
-                        'triple': triple_name,
-                        'n_assets': len(df_triple.columns),
-                        'n_coint_relations': n_coint,
-                        'first_eigenvec_norm': np.linalg.norm(first_eigenvec),
-                        'spread_vol': spread_vol,
-                        'data_points': len(df_triple)
-                    })
-                    
-                except Exception:
-                    johansen_summary.append({
-                        'triple': triple_name,
-                        'n_assets': len(df_triple.columns),
-                        'n_coint_relations': None,
-                        'first_eigenvec_norm': None,
-                        'spread_vol': None,
-                        'data_points': len(df_triple)
-                    })
+        # Default values for failed cases
+        result = {
+            'triple': triple_name, 'n_assets': n_assets, 'data_points': data_points,
+            'n_coint_relations': None, 'first_eigenvec_norm': None, 'spread_vol': None
+        }
         
-        return pd.DataFrame(johansen_summary)
-    else:
-        return pd.DataFrame()  # Empty DataFrame if no triples
+        if n_assets >= 3 and data_points > 100:
+            try:
+                johansen_result = johansen(df_triple)
+                n_coint = johansen_result['johansen_n']
+                first_eigenvec = [johansen_result.get(f'eig_{i}', 0) for i in range(n_assets)]
+                
+                result.update({
+                    'n_coint_relations': n_coint,
+                    'first_eigenvec_norm': np.linalg.norm(first_eigenvec),
+                    'spread_vol': sum(first_eigenvec[i] * df_triple.iloc[:, i] for i in range(n_assets)).std() if n_coint > 0 else np.nan
+                })
+            except Exception:
+                pass  # Keep default None values
+        
+        results.append(result)
+    
+    return pd.DataFrame(results)
 
 
 def johansen_sensitivity_summary(all_data, min_obs=120):
-    """
-    Minimal Johansen sensitivity summary.
-    Counts how many simple specifications yield rank>0 per window (full/H1/H2).
-    Uses existing johansen() and suppresses verbose solver output locally.
-    Returns a DataFrame with columns: triple, window, rank>0, total, summary.
-    """
-    # Suppress noisy warnings during internal VAR/Johansen fits
+    """Minimal Johansen sensitivity summary."""
     warnings.filterwarnings('ignore', message='.*SVD did not converge.*')
     warnings.filterwarnings('ignore', message='.*Critical values are only available.*')
 
-    rows = []
-    try:
-        triples = [k for k in all_data.keys() if 'triple' in k.lower()]
-    except Exception:
+    triples = [k for k in all_data.keys() if 'triple' in k.lower()]
+    if not triples:
         return pd.DataFrame(columns=['triple', 'window', 'rank>0', 'total', 'summary'])
 
+    results = []
     for triple in triples:
-        try:
-            df0 = all_data[triple].replace([np.inf, -np.inf], np.nan).dropna().astype(float)
-        except Exception:
-            continue
-
+        df0 = all_data[triple].replace([np.inf, -np.inf], np.nan).dropna().astype(float, errors='ignore')
         if df0.shape[1] < 3 or len(df0) < min_obs:
             continue
 
-        idx = df0.index
-        mid = idx[len(idx)//2]
-        windows = {
-            'full': df0,
-            'H1': df0.loc[:mid],
-            'H2': df0.loc[mid:]
-        }
+        # Split into windows
+        mid = df0.index[len(df0.index)//2]
+        windows = {'full': df0, 'H1': df0.loc[:mid], 'H2': df0.loc[mid:]}
 
-        for win, sdf in windows.items():
+        for win_name, sdf in windows.items():
             sdf = sdf.dropna()
             if len(sdf) < min_obs:
                 continue
 
+            # Create variants (daily/weekly, levels/logs)
             weekly = sdf.resample('W-FRI').last().dropna()
             variants = [('levels_daily', sdf), ('levels_weekly', weekly)]
             if (sdf > 0).all().all():
-                variants += [('logs_daily', np.log(sdf)), ('logs_weekly', np.log(weekly))]
+                variants.extend([('logs_daily', np.log(sdf)), ('logs_weekly', np.log(weekly))])
 
-            det_orders = [-1, 0, 1]
-            hits = 0
-            tot = 0
-
+            # Test all combinations
+            hits = total = 0
             for _, dfx in variants:
                 if len(dfx) < min_obs:
                     continue
-                for det in det_orders:
+                for det_order in [-1, 0, 1]:
                     try:
-                        # Silence low-level solver noise printed to stdout/stderr
                         with silence_fd_output():
-                            res = johansen(dfx, det_order=det)
-                        r = res.get('johansen_n', 0) or 0
-                        tot += 1
-                        if isinstance(r, (int, np.integer)) and r > 0:
+                            res = johansen(dfx, det_order=det_order)
+                        total += 1
+                        if res.get('johansen_n', 0) > 0:
                             hits += 1
                     except Exception:
-                        # Skip failing specs (ill-conditioned windows, singularities, etc.)
                         continue
 
-            if tot > 0:
-                rows.append({
-                    'triple': triple,
-                    'window': win,
-                    'rank>0': hits,
-                    'total': tot,
-                    'summary': f"{hits}/{tot}"
+            if total > 0:
+                results.append({
+                    'triple': triple, 'window': win_name, 'rank>0': hits, 
+                    'total': total, 'summary': f"{hits}/{total}"
                 })
 
-    summary = pd.DataFrame(rows).sort_values(['triple', 'window']) if rows else pd.DataFrame(columns=['triple','window','rank>0','total','summary'])
-    return summary
+    return pd.DataFrame(results).sort_values(['triple', 'window']) if results else pd.DataFrame(columns=['triple','window','rank>0','total','summary'])
