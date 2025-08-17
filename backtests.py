@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import TimeSeriesSplit
 from statsmodels.tsa.stattools import adfuller
 import statsmodels.api as sm
-from scipy import stats
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -260,7 +258,7 @@ def summarize_cv(cv_df, all_data=None, selected=None):
     summary.columns = ['_'.join(col).strip() for col in summary.columns]
     
     if all_data is not None and selected is not None and 'pair' in cv_df.columns:
-        from coint_tests import engle_granger, ou_params
+        from cointegration_tests import engle_granger, ou_params
         half_lives, thetas = [], []
         for pair in cv_df['pair'].unique():
             if pair in all_data:

@@ -7,7 +7,6 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, kpss, zivot_andrews
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
-from pykalman import KalmanFilter
 
 warnings.filterwarnings('ignore')
 

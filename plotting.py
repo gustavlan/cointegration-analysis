@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from coint_tests import engle_granger, ou_params
+from cointegration_tests import engle_granger, ou_params
 from threshold_optimization import optimize_thresholds, plot_threshold_tradeoff
 
 def analyze_pairs_nb(all_data, selected, Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True, normalize=False):
