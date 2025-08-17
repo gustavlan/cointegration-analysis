@@ -1,11 +1,3 @@
-"""
-Comprehensive Backtesting Module for Pairs Trading Strategy
-Implements Tasks 6, 7, 8, and 9 from the CQF Final Exam
-
-This module provides a complete backtesting framework for pairs trading strategies
-with train/test splits, performance metrics, rolling cointegration, and Kalman filtering.
-"""
-
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
@@ -19,19 +11,6 @@ warnings.filterwarnings('ignore')
 def split_train_test(data, train_ratio=0.6, train_end_date=None):
     """
     Split time series data into training and testing periods.
-    
-    Parameters:
-    -----------
-    data : pd.DataFrame
-        Price data with DatetimeIndex
-    train_ratio : float
-        Proportion of data for training (if train_end_date not specified)
-    train_end_date : str or datetime
-        Explicit end date for training period
-        
-    Returns:
-    --------
-    dict : Contains train_data, test_data, split_date
     """
     if train_end_date is not None:
         split_date = pd.to_datetime(train_end_date)
@@ -55,17 +34,6 @@ def split_train_test(data, train_ratio=0.6, train_end_date=None):
 def estimate_cointegration(price1, price2, add_constant=True):
     """
     Estimate cointegration relationship using Engle-Granger approach.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    add_constant : bool
-        Whether to include intercept in regression
-        
-    Returns:
-    --------
-    dict : Contains beta, alpha, spread, residuals, adf_pvalue, r_squared
     """
     # Align series
     aligned_data = pd.concat([price1, price2], axis=1).dropna()
@@ -101,19 +69,6 @@ def estimate_cointegration(price1, price2, add_constant=True):
 def generate_trading_signals(spread, z_threshold=2.0, exit_threshold=0.0):
     """
     Generate trading signals based on spread z-score.
-    
-    Parameters:
-    -----------
-    spread : pd.Series
-        Spread time series
-    z_threshold : float
-        Entry threshold for trading signals
-    exit_threshold : float
-        Exit threshold (typically 0 for mean reversion)
-        
-    Returns:
-    --------
-    dict : Contains positions, z_scores, entry_signals, exit_signals
     """
     # Compute z-score
     mean_spread = spread.mean()
@@ -144,37 +99,14 @@ def generate_trading_signals(spread, z_threshold=2.0, exit_threshold=0.0):
 def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
     """
     Calculate strategy returns based on positions and hedge ratio.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    positions : pd.Series
-        Position signals (+1 long spread, -1 short spread, 0 no position)
-    beta : float
-        Hedge ratio
-    alpha : float
-        Intercept term
-        
-    Returns:
-    --------
-    dict : Contains strategy_returns, asset_returns, cumulative_returns
     """
     # Calculate returns
     returns1 = price1.pct_change()
     returns2 = price2.pct_change()
-    
-    # Align data
     aligned_data = pd.concat([returns1, returns2, positions], axis=1).dropna()
     r1, r2, pos = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1], aligned_data.iloc[:, 2]
-    
-    # Shift positions to avoid look-ahead bias
     pos_lagged = pos.shift(1)
-    
-    # Calculate spread returns: r_spread = r1 - beta * r2
     spread_returns = r1 - beta * r2
-    
-    # Strategy returns = position * spread_returns
     strategy_returns = pos_lagged * spread_returns
     strategy_returns = strategy_returns.fillna(0)
     
@@ -194,23 +126,9 @@ def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
 def compute_drawdowns(cumulative_returns):
     """
     Compute drawdown series from cumulative returns.
-    
-    Parameters:
-    -----------
-    cumulative_returns : pd.Series
-        Cumulative returns series
-        
-    Returns:
-    --------
-    dict : Contains drawdown series, max_drawdown, max_dd_date
     """
-    # Running maximum (peak)
     peak = cumulative_returns.expanding().max()
-    
-    # Drawdown as percentage from peak
     drawdown = (cumulative_returns / peak) - 1
-    
-    # Maximum drawdown
     max_drawdown = drawdown.min()
     max_dd_date = drawdown.idxmin()
     
@@ -253,19 +171,6 @@ def compute_rolling_sharpe(returns, window=252, risk_free_rate=0.0):
 def compute_rolling_beta(strategy_returns, market_returns, window=252):
     """
     Compute rolling beta against market benchmark.
-    
-    Parameters:
-    -----------
-    strategy_returns : pd.Series
-        Strategy returns
-    market_returns : pd.Series
-        Market benchmark returns
-    window : int
-        Rolling window size
-        
-    Returns:
-    --------
-    pd.Series : Rolling beta
     """
     # Align series
     aligned_data = pd.concat([strategy_returns, market_returns], axis=1).dropna()
@@ -285,23 +190,6 @@ def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6,
                           transaction_costs=0.0, add_constant=True):
     """
     Complete backtest of pairs trading strategy with train/test split.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    z_threshold : float
-        Entry threshold for trading
-    train_ratio : float
-        Proportion of data for training
-    transaction_costs : float
-        Transaction cost per trade (as fraction)
-    add_constant : bool
-        Whether to include intercept in cointegration regression
-        
-    Returns:
-    --------
-    dict : Complete backtest results
     """
     # Align data
     data = pd.concat([price1, price2], axis=1).dropna()
@@ -374,23 +262,6 @@ def backtest_with_rolling_cointegration(price1, price2, z_threshold=2.0,
                                        train_ratio=0.6):
     """
     Backtest with rolling re-estimation of cointegration parameters.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    z_threshold : float
-        Entry threshold for trading
-    window_size : int
-        Size of rolling window for cointegration estimation (days)
-    step_size : int
-        Step size for re-estimation (days)
-    train_ratio : float
-        Proportion of initial data for first estimation
-        
-    Returns:
-    --------
-    dict : Backtest results with rolling parameters
     """
     # Align data
     data = pd.concat([price1, price2], axis=1).dropna()
@@ -522,15 +393,6 @@ class KalmanPairsFilter:
     def __init__(self, initial_beta=1.0, process_var=1e-4, observation_var=1e-2):
         """
         Initialize Kalman Filter for pairs trading.
-        
-        Parameters:
-        -----------
-        initial_beta : float
-            Initial hedge ratio estimate
-        process_var : float
-            Process noise variance (how much beta can change)
-        observation_var : float
-            Observation noise variance
         """
         # State: [beta, alpha]
         self.state = np.array([initial_beta, 0.0])
@@ -556,13 +418,6 @@ class KalmanPairsFilter:
     def update(self, y, x):
         """
         Update filter with new observation.
-        
-        Parameters:
-        -----------
-        y : float
-            Price of asset 1
-        x : float
-            Price of asset 2
         """
         # Prediction step
         self.state = self.F @ self.state
@@ -598,23 +453,7 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
                                process_var=1e-4, observation_var=1e-2):
     """
     Backtest with Kalman Filter for adaptive hedge ratio.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series for the two assets
-    z_threshold : float
-        Entry threshold for trading
-    train_ratio : float
-        Proportion of data for initial training
-    process_var : float
-        Process noise variance for Kalman filter
-    observation_var : float
-        Observation noise variance for Kalman filter
-        
-    Returns:
-    --------
-    dict : Backtest results with Kalman filter adaptation
+
     """
     # Align data
     data = pd.concat([price1, price2], axis=1).dropna()
@@ -751,56 +590,68 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
     }
 
 
-def create_timeseries_splits(data, n_splits=5, test_size=0.2):
+def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, step=None):
     """
-    Create time series cross-validation splits.
-    
-    Parameters:
-    -----------
-    data : pd.DataFrame
-        Time series data
-    n_splits : int
-        Number of splits
-    test_size : float
-        Proportion of data for testing in each split
+    Fold generator for time-series CV with fixed test size.
+    """
+    T = len(index)
+    if step is None:
+        step = min_test_size // 2
         
-    Returns:
-    --------
-    list : List of (train_idx, test_idx) tuples
-    """
-    tscv = TimeSeriesSplit(n_splits=n_splits, test_size=int(len(data) * test_size))
-    splits = []
+    # Calculate max feasible splits
+    min_train_size = int(T * min_train_ratio)
+    available_for_splits = T - min_train_size - min_test_size
+    max_splits = max(1, available_for_splits // step + 1)
     
-    for train_idx, test_idx in tscv.split(data):
-        splits.append((data.index[train_idx], data.index[test_idx]))
+    # Reduce n_splits if needed
+    actual_n_splits = min(n_splits, max_splits)
+    if actual_n_splits < n_splits:
+        print(f"Warning: Reduced n_splits from {n_splits} to {actual_n_splits} due to data constraints")
+    
+    splits = []
+    for i in range(actual_n_splits):
+        # Calculate test period
+        test_end = min_train_size + min_test_size + i * step
+        test_start = test_end - min_test_size
+        
+        # Ensure we don't exceed data bounds
+        if test_end > T:
+            test_end = T
+            test_start = test_end - min_test_size
+            
+        if test_start < min_train_size:
+            break
+            
+        # Train period: from start to test_start
+        train_idx = index[:test_start]
+        test_idx = index[test_start:test_end]
+        
+        splits.append((train_idx, test_idx))
     
     return splits
 
 
+def create_timeseries_splits(data, n_splits=5, test_size=0.2):
+    """
+    Create time series cross-validation splits.
+    Kept for backward compatibility.
+    """
+    # Use the robust fold generator with fixed test size
+    min_test_size = max(63, int(len(data) * test_size))  # At least 63 days or test_size ratio
+    return compute_ts_folds(data.index, n_splits, min_test_size=min_test_size)
+
+
 def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5], 
-                                  n_splits=5):
+                                  n_splits=3, min_train_ratio=0.6, min_test_size=63):
     """
     Run cross-validation backtest across multiple thresholds.
-    
-    Parameters:
-    -----------
-    price1, price2 : pd.Series
-        Price series
-    z_thresholds : list
-        List of z-score thresholds to test
-    n_splits : int
-        Number of CV splits
-        
-    Returns:
-    --------
-    pd.DataFrame : Cross-validation results
     """
     # Align data
     data = pd.concat([price1, price2], axis=1).dropna()
     data.columns = ['asset1', 'asset2']
     
-    # Create splits
-    splits = create_timeseries_splits(data, n_splits=n_splits)
+    # Create robust splits
+    splits = compute_ts_folds(data.index, n_splits, min_train_ratio, min_test_size)
     
     results = []
     
@@ -847,3 +698,68 @@ def run_cross_validation_backtest(price1, price2, z_thresholds=[1.5, 2.0, 2.5],
             })
     
     return pd.DataFrame(results)
+
+
+def run_cv_over_pairs(all_data, selected, z_threshold_by_pair, n_splits=3, 
+                     min_train_ratio=0.6, min_test_size=63):
+    """
+    Run cross-validation backtest over multiple pairs.
+    """
+    all_results = []
+    
+    for pair_name in selected:
+        if pair_name not in all_data:
+            print(f"Warning: {pair_name} not found in all_data, skipping...")
+            continue
+            
+        df = all_data[pair_name]
+        if len(df.columns) != 2:
+            print(f"Warning: {pair_name} has {len(df.columns)} columns, expected 2, skipping...")
+            continue
+            
+        asset1, asset2 = df.columns
+        z_thresh = z_threshold_by_pair.get(pair_name, 2.0)  # Default to 2.0
+        
+        try:
+            pair_results = run_cross_validation_backtest(
+                df[asset1], df[asset2],
+                z_thresholds=[z_thresh],  # Use only the specified threshold
+                n_splits=n_splits,
+                min_train_ratio=min_train_ratio,
+                min_test_size=min_test_size
+            )
+            
+            # Add pair column
+            pair_results['pair'] = pair_name
+            all_results.append(pair_results)
+            
+        except Exception as e:
+            print(f"Error processing {pair_name}: {e}")
+            continue
+    
+    if all_results:
+        return pd.concat(all_results, ignore_index=True)
+    else:
+        return pd.DataFrame()
+
+
+def summarize_cv(cv_df):
+    """
+    Summarize cross-validation results in the same format as the notebook.
+    """
+    if 'pair' in cv_df.columns:
+        group_cols = ['pair', 'z_threshold']
+    else:
+        group_cols = ['z_threshold']
+        
+    summary = cv_df.groupby(group_cols).agg({
+        'total_return': ['mean', 'std'],
+        'sharpe_ratio': ['mean', 'std'],
+        'max_drawdown': 'mean',
+        'num_trades': 'mean'
+    }).round(4)
+    
+    # Flatten column names to match notebook format
+    summary.columns = ['_'.join(col).strip() for col in summary.columns]
+    
+    return summary
