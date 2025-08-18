@@ -1,6 +1,4 @@
 import warnings
-import os
-import contextlib
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -9,25 +7,6 @@ from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.vector_ar.var_model import VAR
 
 warnings.filterwarnings('ignore')
-
-@contextlib.contextmanager
-def silence_fd_output():
-    """Temporarily redirect stdout/stderr to suppress output from external libraries."""
-    try:
-        saved_out, saved_err = os.dup(1), os.dup(2)  # save original file descriptors
-        devnull = os.open(os.devnull, os.O_WRONLY)
-        os.dup2(devnull, 1)
-        os.dup2(devnull, 2)
-        os.close(devnull)
-        try:
-            yield
-        finally:
-            os.dup2(saved_out, 1)
-            os.dup2(saved_err, 2)
-            os.close(saved_out)
-            os.close(saved_err)
-    except Exception:
-        yield
 
 def matrix_ols_regression(y, X):
     """Compute OLS regression coefficients using matrix operations."""
