@@ -104,7 +104,6 @@ def compute_rolling_beta(strategy_returns, market_returns, window=TRADING_DAYS_P
     rolling_var = mkt_ret.rolling(window=window).var()
     return rolling_cov / rolling_var
 
-
 def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6, transaction_costs=0.0, add_constant=True):
     data = align_price_data(price1, price2)
     split_result = split_train_test(data, train_ratio=train_ratio)
@@ -135,10 +134,6 @@ def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6, tra
                                'num_trades': int(num_trades), 'avg_return_per_trade': strategy_ret.mean(),
                                'win_rate': (strategy_ret > 0).mean()}
     }
-
-
-# Removed backtest_with_rolling_cointegration - over 250 lines, not used directly in notebook
-# Removed KalmanPairsFilter class and backtest_with_kalman_filter - complex implementation, simplified later
 
 def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, step=None):
     T = len(index)
@@ -420,7 +415,6 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
     initial_coint = estimate_cointegration(split_result['train_data']['asset1'], split_result['train_data']['asset2'])
     test_data = split_result['test_data']
     
-    # Simple adaptive beta using exponential smoothing instead of full Kalman
     adaptive_betas = []
     strategy_returns = []
     alpha = 0.95  # exponential smoothing factor
@@ -429,20 +423,18 @@ def backtest_with_kalman_filter(price1, price2, z_threshold=2.0, train_ratio=0.6
     for i, idx in enumerate(test_data.index):
         y, x = test_data.loc[idx, 'asset1'], test_data.loc[idx, 'asset2']
         
-        # Simple beta update via exponential smoothing
+        # beta update via exponential smoothing
         if i > 0:
             implied_beta = y / x if x != 0 else current_beta
             current_beta = alpha * current_beta + (1 - alpha) * implied_beta
         
         adaptive_betas.append(current_beta)
         
-        # Calculate returns (simplified)
         if i > 0:
             ret1 = test_data['asset1'].iloc[i] / test_data['asset1'].iloc[i-1] - 1
             ret2 = test_data['asset2'].iloc[i] / test_data['asset2'].iloc[i-1] - 1
             spread_return = ret1 - adaptive_betas[i-1] * ret2
             
-            # Simple threshold-based position
             if abs(spread_return) > z_threshold * 0.01:  # simplified threshold
                 position = -1 if spread_return > 0 else 1
             else:

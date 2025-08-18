@@ -29,7 +29,6 @@ def silence_fd_output():
         yield
 
 def matrix_ols_regression(y, X):
-    """Performs OLS regression using matrix algebra."""
     try:
         # Using the OLS formula: beta = (X'X)^(-1) * X'y
         XTX = X.T @ X
