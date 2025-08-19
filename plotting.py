@@ -5,7 +5,38 @@ from cointegration_tests import engle_granger, ou_params
 from threshold_optimization import optimize_thresholds, plot_threshold_tradeoff
 
 def analyze_pairs_nb(all_data, selected, Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, use_ou=True, normalize=False):
-    """Analyze pairs trading performance across different threshold values and display results."""
+    """Analyze pairs trading performance across different threshold values and display results.
+    
+    Performs comprehensive pairs trading analysis by testing multiple threshold values
+    and finding optimal parameters for each pair. Displays threshold optimization plots
+    for visual analysis of the tradeoff between number of trades and profitability.
+    
+    Args:
+        all_data (dict): Dictionary mapping pair names to price DataFrames.
+        selected (list): List of pair names to analyze from all_data.
+        Z_min (float, optional): Minimum threshold Z-score. Defaults to 0.5.
+        Z_max (float, optional): Maximum threshold Z-score. Defaults to 3.0.
+        dZ (float, optional): Z-score increment step. Defaults to 0.1.
+        cost (float, optional): Transaction cost per trade. Defaults to 0.0.
+        use_ou (bool, optional): Use Ornstein-Uhlenbeck parameters instead of
+                                sample statistics. Defaults to True.
+        normalize (bool, optional): Normalize P&L by spread volatility. 
+                                   Defaults to False.
+    
+    Returns:
+        tuple: (summary_df, opt_tables) where:
+            - summary_df: DataFrame with best parameters and performance for each pair
+            - opt_tables: Dictionary mapping pair names to full optimization results
+    
+    Note:
+        Requires cointegrated pairs (Engle-Granger test must pass). Non-cointegrated
+        pairs are automatically skipped with a warning.
+    
+    Example:
+        >>> summary, tables = analyze_pairs_nb(data, ['tech_pair', 'energy_pair'])
+        >>> best_pair = summary.loc[summary['cum_PnL'].idxmax(), 'pair']
+        >>> print(f"Best performing pair: {best_pair}")
+    """
     summary, opt_tables = [], {}
     
     for pair in selected:
@@ -40,7 +71,38 @@ def analyze_pairs_nb(all_data, selected, Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0,
 
 def plot_systematic_performance(stitched_results, selected_pairs, benchmark_returns, 
                                compute_rolling_sharpe, compute_rolling_beta, title="Strategy Performance"):
-    """Plot comprehensive performance analysis for multiple pairs trading strategies."""
+    """Plot comprehensive performance analysis for multiple pairs trading strategies.
+    
+    Creates a 4x3 subplot grid showing equity curves, drawdowns, rolling Sharpe ratios,
+    and rolling betas for up to 3 pairs trading strategies. Provides visual comparison
+    of strategy performance over time.
+    
+    Args:
+        stitched_results (dict): Dictionary mapping pair names to backtest results.
+                               Each result must contain 'cumulative_returns', 
+                               'drawdowns', and 'strategy_returns'.
+        selected_pairs (list): List of up to 3 pair names to plot.
+        benchmark_returns (pd.Series): Market benchmark returns (e.g., S&P 500)
+                                      for beta calculation.
+        compute_rolling_sharpe (callable): Function to compute rolling Sharpe ratio.
+                                         Must accept (returns, window) arguments.
+        compute_rolling_beta (callable): Function to compute rolling beta.
+                                       Must accept (strategy_returns, market_returns, window).
+        title (str, optional): Main title for the figure. Defaults to "Strategy Performance".
+    
+    Returns:
+        pd.DataFrame: Summary DataFrame with average rolling Sharpe ratios for each pair.
+    
+    Note:
+        Assumes exactly 3 pairs for layout. Function will need modification for
+        different numbers of pairs.
+    
+    Example:
+        >>> results_df = plot_systematic_performance(
+        ...     stitched_data, ['pair1', 'pair2', 'pair3'], 
+        ...     sp500_returns, compute_rolling_sharpe, compute_rolling_beta
+        ... )
+    """
     fig, axes = plt.subplots(4, 3, figsize=(20, 16))
     fig.suptitle(title, fontsize=16, fontweight='bold')
     colors = ['blue', 'red', 'green']
@@ -83,7 +145,29 @@ def plot_systematic_performance(stitched_results, selected_pairs, benchmark_retu
     } for p in selected_pairs])
 
 def plot_kalman_beta_evolution(kalman_analysis, selected_pairs):
-    """Plot the evolution of adaptive beta coefficients from Kalman filter analysis."""
+    """Plot the evolution of adaptive beta coefficients from Kalman filter analysis.
+    
+    Creates time series plots showing how beta coefficients evolve over time
+    when using adaptive estimation methods like Kalman filtering. Useful for
+    visualizing the stability of hedge ratios in pairs trading.
+    
+    Args:
+        kalman_analysis (dict): Analysis results containing 'detailed_results' key
+                              which maps pair names to dictionaries with 'adaptive_betas'
+                              pd.Series.
+        selected_pairs (list): List of pair names to plot.
+    
+    Returns:
+        None: Displays matplotlib plots but returns nothing.
+    
+    Note:
+        Creates one subplot per pair in a vertical layout. Each subplot shows
+        the time evolution of the adaptive beta coefficient.
+    
+    Example:
+        >>> kalman_results = adaptive_cointegration_analysis(data, pairs, thresholds)
+        >>> plot_kalman_beta_evolution(kalman_results, ['tech_pair', 'finance_pair'])
+    """
     fig, axes = plt.subplots(len(selected_pairs), 1, figsize=(12, 4*len(selected_pairs)))
     if len(selected_pairs) == 1:
         axes = [axes]

@@ -9,7 +9,33 @@ TRADING_DAYS_PER_YEAR = 252
 
 
 def calculate_performance_metrics(strategy_returns, cumulative_returns=None):
-    """Calculate comprehensive performance metrics for a trading strategy."""
+    """Calculate comprehensive performance metrics for a trading strategy.
+    
+    Computes key performance indicators including total return, annualized return,
+    volatility, and Sharpe ratio. All metrics are annualized using 252 trading
+    days per year.
+    
+    Args:
+        strategy_returns (pd.Series): Series of strategy returns (not cumulative).
+        cumulative_returns (pd.Series, optional): Pre-computed cumulative returns.
+                                                 If None, calculated from strategy_returns.
+    
+    Returns:
+        dict: Performance metrics dictionary containing:
+            - 'total_return': Total cumulative return over the period
+            - 'annualized_return': Annualized return (geometric mean)
+            - 'annualized_volatility': Annualized standard deviation
+            - 'sharpe_ratio': Annualized Sharpe ratio (assuming 0% risk-free rate)
+    
+    Note:
+        Returns zero values for empty return series. Sharpe ratio returns 0
+        if volatility is zero (risk-free strategy).
+    
+    Example:
+        >>> returns = pd.Series([0.01, -0.005, 0.02, 0.01])
+        >>> metrics = calculate_performance_metrics(returns)
+        >>> print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+    """
     if cumulative_returns is None:
         cumulative_returns = (1 + strategy_returns).cumprod()
     
@@ -25,13 +51,57 @@ def calculate_performance_metrics(strategy_returns, cumulative_returns=None):
             'annualized_volatility': annualized_vol, 'sharpe_ratio': sharpe_ratio}
 
 def align_price_data(price1, price2):
-    """Align two price series on common dates and handle missing values."""
+    """Align two price series on common dates and handle missing values.
+    
+    Takes two price series and creates a DataFrame with aligned dates,
+    removing any rows where either series has missing values.
+    
+    Args:
+        price1 (pd.Series): First asset price series.
+        price2 (pd.Series): Second asset price series.
+    
+    Returns:
+        pd.DataFrame: DataFrame with two columns ('asset1', 'asset2') containing
+                     aligned price data with no missing values.
+    
+    Example:
+        >>> spy_prices = pd.Series([100, 101, 102], index=pd.date_range('2020-01-01', periods=3))
+        >>> qqq_prices = pd.Series([200, 201, 203], index=pd.date_range('2020-01-01', periods=3))
+        >>> aligned = align_price_data(spy_prices, qqq_prices)
+        >>> print(aligned.columns.tolist())  # ['asset1', 'asset2']
+    """
     data = pd.concat([price1, price2], axis=1).dropna()
     data.columns = ['asset1', 'asset2']
     return data
 
 def split_train_test(data, train_ratio=0.6, train_end_date=None):
-    """Split data into training and testing periods for backtesting."""
+    """Split data into training and testing periods for backtesting.
+    
+    Splits time series data into training and testing periods using either
+    a percentage split or a specific end date for training period.
+    
+    Args:
+        data (pd.DataFrame): Time series data to split with DatetimeIndex.
+        train_ratio (float, optional): Fraction of data to use for training
+                                     (ignored if train_end_date is specified).
+                                     Defaults to 0.6.
+        train_end_date (str or datetime, optional): Specific end date for training
+                                                  period. If provided, overrides
+                                                  train_ratio.
+    
+    Returns:
+        dict: Dictionary containing:
+            - 'train_data': Training period DataFrame
+            - 'test_data': Testing period DataFrame  
+            - 'split_date': Date where split occurred
+            - 'train_size': Number of observations in training set
+            - 'test_size': Number of observations in testing set
+    
+    Example:
+        >>> split_result = split_train_test(price_data, train_ratio=0.7)
+        >>> print(f"Training: {split_result['train_size']} observations")
+        >>> print(f"Testing: {split_result['test_size']} observations")
+    """
     if train_end_date is not None:
         split_date = pd.to_datetime(train_end_date)
         train_data = data[data.index <= split_date]
@@ -46,7 +116,38 @@ def split_train_test(data, train_ratio=0.6, train_end_date=None):
             'train_size': len(train_data), 'test_size': len(test_data)}
 
 def estimate_cointegration(price1, price2, add_constant=True):
-    """Estimate cointegrating relationship between two price series using OLS."""
+    """Estimate cointegrating relationship between two price series using OLS.
+    
+    Performs OLS regression to estimate the long-run equilibrium relationship
+    between two price series. Tests the residuals for stationarity to confirm
+    cointegration.
+    
+    Args:
+        price1 (pd.Series): Price series of dependent variable.
+        price2 (pd.Series): Price series of independent variable.
+        add_constant (bool, optional): Whether to include intercept in regression.
+                                     Defaults to True.
+    
+    Returns:
+        dict: Cointegration estimation results:
+            - 'alpha': Intercept term (0 if add_constant=False)
+            - 'beta': Cointegrating coefficient (hedge ratio)
+            - 'spread': Cointegrating residuals time series
+            - 'residuals': Alias for 'spread'
+            - 'adf_pvalue': p-value from ADF test on residuals
+            - 'r_squared': R-squared of cointegration regression
+            - 'model': Fitted OLS model object
+    
+    Note:
+        Lower ADF p-value (< 0.05) indicates cointegration. The spread represents
+        the stationary linear combination of the two price series.
+    
+    Example:
+        >>> result = estimate_cointegration(spy_prices, qqq_prices)
+        >>> if result['adf_pvalue'] < 0.05:
+        ...     print(f"Cointegrated with hedge ratio {result['beta']:.4f}")
+        ...     print(f"R-squared: {result['r_squared']:.4f}")
+    """
     aligned_data = pd.concat([price1, price2], axis=1).dropna()
     y, x = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
     
@@ -65,7 +166,35 @@ def estimate_cointegration(price1, price2, add_constant=True):
             'adf_pvalue': adf_pvalue, 'r_squared': model.rsquared, 'model': model}
 
 def generate_trading_signals(spread, z_threshold=2.0):
-    """Generate trading signals based on standardized spread deviations."""
+    """Generate trading signals based on standardized spread deviations.
+    
+    Creates long/short signals when the spread deviates beyond specified
+    Z-score thresholds from its historical mean. Uses standardized Z-scores
+    to ensure consistent threshold interpretation across different spreads.
+    
+    Args:
+        spread (pd.Series): Spread time series (cointegrating residuals).
+        z_threshold (float, optional): Z-score threshold for signal generation.
+                                      Defaults to 2.0 (2 standard deviations).
+    
+    Returns:
+        dict: Signal generation results:
+            - 'positions': Position series (-1=short, 0=neutral, 1=long)
+            - 'z_scores': Standardized Z-scores of the spread
+            - 'entry_signals': Binary series indicating trade entries (0 or 1)
+            - 'mean_spread': Historical mean used for standardization
+            - 'std_spread': Historical std deviation used for standardization
+    
+    Note:
+        Strategy goes long (1) when Z-score < -z_threshold (spread below mean)
+        and short (-1) when Z-score > z_threshold (spread above mean).
+        
+    Example:
+        >>> signals = generate_trading_signals(spread, z_threshold=1.5)
+        >>> n_long_signals = (signals['positions'] == 1).sum()
+        >>> n_short_signals = (signals['positions'] == -1).sum()
+        >>> print(f"Generated {n_long_signals} long and {n_short_signals} short signals")
+    """
     mean_spread, std_spread = spread.mean(), spread.std()
     z_scores = (spread - mean_spread) / std_spread  # standardize spread
     positions = np.where(z_scores > z_threshold, -1, np.where(z_scores < -z_threshold, 1, 0))  # long/short signals
@@ -77,7 +206,39 @@ def generate_trading_signals(spread, z_threshold=2.0):
             'mean_spread': mean_spread, 'std_spread': std_spread}
 
 def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
-    """Calculate strategy returns from positions and hedge ratio."""
+    """Calculate strategy returns from positions and hedge ratio.
+    
+    Computes the returns of a pairs trading strategy by combining individual
+    asset returns according to positions and hedge ratio. Uses lagged positions
+    to avoid look-ahead bias.
+    
+    Args:
+        price1 (pd.Series): Price series of first asset.
+        price2 (pd.Series): Price series of second asset.
+        positions (pd.Series): Position series (-1, 0, 1) indicating strategy positions.
+        beta (float): Hedge ratio (units of asset2 per unit of asset1).
+        alpha (float, optional): Intercept term (usually 0). Defaults to 0.
+    
+    Returns:
+        dict: Strategy returns calculation results:
+            - 'strategy_returns': Strategy returns series
+            - 'spread_returns': Hedge portfolio returns (asset1 - beta*asset2)
+            - 'asset1_returns': Returns of first asset
+            - 'asset2_returns': Returns of second asset  
+            - 'cumulative_returns': Cumulative strategy returns
+            - 'positions_used': Lagged positions actually used in calculations
+    
+    Note:
+        Uses lagged positions (t-1) to calculate returns at time t, preventing
+        look-ahead bias. Strategy return = position_{t-1} * spread_return_t
+    
+    Example:
+        >>> returns_data = calculate_strategy_returns(
+        ...     spy_prices, qqq_prices, signal_positions, hedge_ratio
+        ... )
+        >>> total_return = returns_data['cumulative_returns'].iloc[-1] - 1
+        >>> print(f"Total strategy return: {total_return:.2%}")
+    """
     returns1, returns2 = price1.pct_change(), price2.pct_change()
     aligned_data = pd.concat([returns1, returns2, positions], axis=1).dropna()
     r1, r2, pos = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1], aligned_data.iloc[:, 2]
@@ -91,21 +252,90 @@ def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
             'cumulative_returns': cumulative_returns, 'positions_used': pos_lagged}
 
 def compute_drawdowns(cumulative_returns):
-    """Compute drawdown series and maximum drawdown statistics."""
+    """Compute drawdown series and maximum drawdown statistics.
+    
+    Calculates drawdowns as the percentage decline from running peaks
+    in the cumulative returns series. Useful for risk assessment and
+    strategy evaluation.
+    
+    Args:
+        cumulative_returns (pd.Series): Cumulative returns series starting from 1.0.
+    
+    Returns:
+        dict: Drawdown analysis results:
+            - 'drawdown': Series of drawdown percentages (always <= 0)
+            - 'peak': Series of running maximum values (peaks)
+            - 'max_drawdown': Worst drawdown experienced (most negative value)
+            - 'max_dd_date': Date when maximum drawdown occurred
+    
+    Note:
+        Drawdown is calculated as (current_value / peak_value) - 1.
+        Values are negative, with -0.20 representing a 20% drawdown.
+    
+    Example:
+        >>> cumulative_rets = pd.Series([1.0, 1.1, 1.05, 1.15, 0.95])
+        >>> dd_result = compute_drawdowns(cumulative_rets)
+        >>> print(f"Maximum drawdown: {dd_result['max_drawdown']:.1%}")
+    """
     peak = cumulative_returns.expanding().max()  # running maximum
     drawdown = (cumulative_returns / peak) - 1  # percentage drawdown
     return {'drawdown': drawdown, 'peak': peak, 
             'max_drawdown': drawdown.min(), 'max_dd_date': drawdown.idxmin()}
 
 def compute_rolling_sharpe(returns, window=TRADING_DAYS_PER_YEAR, risk_free_rate=0.0):
-    """Calculate rolling Sharpe ratio over specified window."""
+    """Calculate rolling Sharpe ratio over specified window.
+    
+    Computes annualized Sharpe ratio using a rolling window approach.
+    Useful for analyzing strategy performance stability over time.
+    
+    Args:
+        returns (pd.Series): Strategy returns time series.
+        window (int, optional): Rolling window size in periods. 
+                               Defaults to TRADING_DAYS_PER_YEAR (252).
+        risk_free_rate (float, optional): Annual risk-free rate. Defaults to 0.0.
+    
+    Returns:
+        pd.Series: Rolling annualized Sharpe ratios.
+    
+    Note:
+        Sharpe ratio is calculated as (excess_return_mean / return_std) * sqrt(252)
+        to annualize the ratio. Early periods may have NaN values due to insufficient
+        data for the rolling window.
+    
+    Example:
+        >>> rolling_sharpe = compute_rolling_sharpe(strategy_returns, window=63)  # Quarterly
+        >>> avg_sharpe = rolling_sharpe.dropna().mean()
+        >>> print(f"Average rolling Sharpe: {avg_sharpe:.2f}")
+    """
     excess_returns = returns - risk_free_rate / TRADING_DAYS_PER_YEAR
     rolling_mean = excess_returns.rolling(window=window).mean()
     rolling_std = excess_returns.rolling(window=window).std()
     return (rolling_mean / rolling_std) * np.sqrt(TRADING_DAYS_PER_YEAR)  # annualized Sharpe
 
 def compute_rolling_beta(strategy_returns, market_returns, window=TRADING_DAYS_PER_YEAR, risk_free_rate=0.0):
-    """Calculate rolling beta of strategy returns relative to market benchmark."""
+    """Calculate rolling beta of strategy returns relative to market benchmark.
+    
+    Computes market beta using a rolling window approach. Beta measures the
+    sensitivity of strategy returns to market movements.
+    
+    Args:
+        strategy_returns (pd.Series): Strategy returns time series.
+        market_returns (pd.Series): Market benchmark returns (e.g., S&P 500).
+        window (int, optional): Rolling window size. Defaults to TRADING_DAYS_PER_YEAR.
+        risk_free_rate (float, optional): Annual risk-free rate. Defaults to 0.0.
+    
+    Returns:
+        pd.Series: Rolling beta coefficients.
+    
+    Note:
+        Beta = Cov(strategy, market) / Var(market). Values near 1.0 indicate
+        market-like sensitivity, while values near 0 suggest market neutrality.
+        
+    Example:
+        >>> rolling_beta = compute_rolling_beta(strat_returns, sp500_returns)
+        >>> avg_beta = rolling_beta.dropna().mean()
+        >>> print(f"Average market beta: {avg_beta:.2f}")
+    """
     excess_market_returns = market_returns - risk_free_rate/TRADING_DAYS_PER_YEAR
     aligned_data = pd.concat([strategy_returns, excess_market_returns], axis=1).dropna()
     strat_ret, mkt_ret = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
@@ -114,7 +344,48 @@ def compute_rolling_beta(strategy_returns, market_returns, window=TRADING_DAYS_P
     return rolling_cov / rolling_var  # beta = cov(strategy, market) / var(market)
 
 def backtest_pair_strategy(price1, price2, z_threshold=2.0, train_ratio=0.6, transaction_costs=0.0, add_constant=True):
-    """Run complete pairs trading backtest with train/test split and transaction costs."""
+    """Run complete pairs trading backtest with train/test split and transaction costs.
+    
+    Executes a full pairs trading backtest including cointegration estimation,
+    signal generation, and performance evaluation. Uses walk-forward approach
+    with separate training and testing periods.
+    
+    Args:
+        price1 (pd.Series): Price series of first asset.
+        price2 (pd.Series): Price series of second asset.
+        z_threshold (float, optional): Z-score threshold for signals. Defaults to 2.0.
+        train_ratio (float, optional): Fraction of data for training. Defaults to 0.6.
+        transaction_costs (float, optional): Transaction cost per trade as fraction
+                                           of notional. Defaults to 0.0.
+        add_constant (bool, optional): Include intercept in cointegration regression.
+                                     Defaults to True.
+    
+    Returns:
+        dict: Comprehensive backtest results:
+            - 'split_info': Train/test split information
+            - 'cointegration': Cointegration estimation results
+            - 'signals': Trading signal generation results  
+            - 'returns': Strategy return calculations
+            - 'drawdowns': Drawdown analysis
+            - 'test_spread': Out-of-sample spread series
+            - 'performance_metrics': Summary performance statistics including:
+              - All standard metrics from calculate_performance_metrics()
+              - 'max_drawdown': Maximum drawdown experienced
+              - 'num_trades': Total number of trades executed
+              - 'avg_return_per_trade': Mean return per trade
+              - 'win_rate': Fraction of profitable trades
+    
+    Note:
+        Estimates cointegration on training data and tests strategy on
+        out-of-sample data to avoid look-ahead bias. Transaction costs
+        are applied with a one-period lag.
+    
+    Example:
+        >>> result = backtest_pair_strategy(spy_prices, qqq_prices, 
+        ...                                z_threshold=1.5, transaction_costs=0.001)
+        >>> perf = result['performance_metrics']
+        >>> print(f"Sharpe: {perf['sharpe_ratio']:.2f}, Max DD: {perf['max_drawdown']:.1%}")
+    """
     data = align_price_data(price1, price2)
     split_result = split_train_test(data, train_ratio=train_ratio)
     train_data, test_data = split_result['train_data'], split_result['test_data']

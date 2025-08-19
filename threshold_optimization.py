@@ -3,7 +3,41 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def backtest_spread(e, mu, sigma, beta, y, x, Z, cost=0.0, normalize=False):
-    """Backtest spread trading strategy with specified threshold and cost parameters."""
+    """Backtest spread trading strategy with specified threshold and cost parameters.
+    
+    Simulates a mean reversion trading strategy on the spread between two assets.
+    Generates long/short signals when spread deviates beyond specified thresholds
+    and calculates P&L including transaction costs.
+    
+    Args:
+        e (array-like): Spread time series (residuals from cointegration regression).
+        mu (float): Mean of the spread for threshold calculation.
+        sigma (float): Standard deviation of spread for threshold calculation.
+        beta (float): Hedge ratio between the two assets.
+        y (pd.Series): Price series of dependent variable (not used in calculation,
+                      kept for interface consistency).
+        x (pd.Series): Price series of independent variable (not used in calculation,
+                      kept for interface consistency).
+        Z (float): Z-score threshold for trade signals (e.g., 2.0 for 2-sigma bands).
+        cost (float, optional): Transaction cost per trade as fraction. Defaults to 0.0.
+        normalize (bool, optional): Whether to normalize P&L by spread volatility.
+                                   Defaults to False.
+    
+    Returns:
+        dict: Backtest results containing:
+            - 'N_trades': Number of completed trades
+            - 'cum_PnL': Cumulative profit and loss
+            - 'avg_PnL': Average P&L per trade (NaN if no trades)
+            - 'avg_duration': Average trade duration in periods (NaN if no trades)
+    
+    Note:
+        Strategy goes long when spread < (mu - Z*sigma) and short when 
+        spread > (mu + Z*sigma). Exits when spread reverts to mean.
+    
+    Example:
+        >>> result = backtest_spread(spread, 0.0, 1.0, 1.5, y_prices, x_prices, 2.0)
+        >>> print(f"Completed {result['N_trades']} trades with P&L {result['cum_PnL']:.4f}")
+    """
     e = pd.Series(e).astype(float).dropna()
     mu, sigma = float(mu), float(sigma) if np.isfinite(sigma) and sigma != 0 else np.nan
     
@@ -45,7 +79,44 @@ def backtest_spread(e, mu, sigma, beta, y, x, Z, cost=0.0, normalize=False):
 
 def optimize_thresholds(e, mu, sigma, beta, y, x, Z_min=0.5, Z_max=3.0, dZ=0.1, cost=0.0, 
                        ou_mu=None, ou_sigma=None, use_ou=False, normalize=False):
-    """Optimize trading thresholds across a range of Z values and return performance metrics."""
+    """Optimize trading thresholds across a range of Z values and return performance metrics.
+    
+    Tests multiple threshold values to find optimal parameters for a mean reversion
+    trading strategy. Can use either sample statistics or Ornstein-Uhlenbeck
+    process parameters for threshold calculation.
+    
+    Args:
+        e (array-like): Spread time series to backtest on.
+        mu (float): Sample mean of the spread.
+        sigma (float): Sample standard deviation of the spread.
+        beta (float): Hedge ratio between assets.
+        y (pd.Series): Price series of first asset.
+        x (pd.Series): Price series of second asset.
+        Z_min (float, optional): Minimum Z-score threshold to test. Defaults to 0.5.
+        Z_max (float, optional): Maximum Z-score threshold to test. Defaults to 3.0.
+        dZ (float, optional): Increment between threshold values. Defaults to 0.1.
+        cost (float, optional): Transaction cost per trade. Defaults to 0.0.
+        ou_mu (float, optional): OU process mean (used if use_ou=True).
+        ou_sigma (float, optional): OU process volatility (used if use_ou=True).
+        use_ou (bool, optional): Whether to use OU parameters instead of sample
+                                statistics. Defaults to False.
+        normalize (bool, optional): Normalize returns by spread volatility.
+                                  Defaults to False.
+    
+    Returns:
+        pd.DataFrame: Optimization results with columns:
+            - 'Z': Z-score threshold values tested
+            - 'N_trades': Number of trades for each threshold
+            - 'cum_PnL': Cumulative P&L for each threshold
+            - 'avg_PnL': Average P&L per trade
+            - 'avg_duration': Average trade duration
+    
+    Example:
+        >>> opt_results = optimize_thresholds(spread, spread.mean(), spread.std(),
+        ...                                  1.2, prices_y, prices_x, Z_min=1.0, Z_max=2.5)
+        >>> best_z = opt_results.loc[opt_results['cum_PnL'].idxmax(), 'Z']
+        >>> print(f"Optimal threshold: {best_z}")
+    """
     final_mu = ou_mu if use_ou and ou_mu is not None else mu
     final_sigma = ou_sigma if use_ou and ou_sigma is not None else sigma  # use OU params if available
     
@@ -54,7 +125,30 @@ def optimize_thresholds(e, mu, sigma, beta, y, x, Z_min=0.5, Z_max=3.0, dZ=0.1, 
     return pd.DataFrame(records)
 
 def plot_threshold_tradeoff(df_res):
-    """Plot the tradeoff between cumulative P&L and number of trades across threshold values."""
+    """Plot the tradeoff between cumulative P&L and number of trades across threshold values.
+    
+    Creates a dual-axis plot showing how cumulative P&L and number of trades
+    vary with different Z-score thresholds. Helps visualize the tradeoff between
+    profitability and trading frequency.
+    
+    Args:
+        df_res (pd.DataFrame): Results from optimize_thresholds() containing
+                              'Z', 'cum_PnL', and 'N_trades' columns.
+    
+    Returns:
+        matplotlib.figure.Figure: Figure object containing the plot.
+    
+    Note:
+        Left y-axis shows cumulative P&L (solid line), right y-axis shows
+        number of trades (dashed line). Higher thresholds typically mean
+        fewer trades but potentially higher P&L per trade.
+    
+    Example:
+        >>> optimization_results = optimize_thresholds(spread, ...)
+        >>> fig = plot_threshold_tradeoff(optimization_results)
+        >>> fig.suptitle("Threshold Optimization Results")
+        >>> plt.show()
+    """
     fig, ax1 = plt.subplots(figsize=(8,4))
     ax1.plot(df_res['Z'], df_res['cum_PnL'], label='Cumulative P&L')
     ax1.set_xlabel('Z')

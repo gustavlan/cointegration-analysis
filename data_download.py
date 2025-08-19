@@ -3,7 +3,38 @@ import pandas as pd
 from datetime import datetime
 
 def fetch_asset_data(asset_groups: dict, start_date: datetime, end_date: datetime, freq: str = "B"):
-    """Download and process price data for multiple asset groups from Yahoo Finance."""
+    """Download and process price data for multiple asset groups from Yahoo Finance.
+    
+    Downloads historical price data for specified asset groups using yfinance
+    and processes it into a standardized format with proper frequency alignment
+    and missing data handling.
+    
+    Args:
+        asset_groups (dict): Dictionary mapping group names to lists of ticker 
+                           symbols. E.g., {'tech_stocks': ['AAPL', 'MSFT']}
+        start_date (datetime): Start date for data download.
+        end_date (datetime): End date for data download.
+        freq (str, optional): Target frequency for data resampling. Defaults 
+                             to "B" (business days).
+    
+    Returns:
+        dict: Dictionary mapping group names to DataFrame objects containing
+              adjusted close prices. Each DataFrame has:
+              - Index: DatetimeIndex with specified frequency
+              - Columns: Ticker symbols
+              - Values: Adjusted close prices
+    
+    Raises:
+        Exception: Individual group download failures are caught and the group
+                  is skipped (logged silently).
+    
+    Example:
+        >>> groups = {'pairs': ['SPY', 'QQQ'], 'commodities': ['GLD', 'SLV']}
+        >>> start = datetime(2020, 1, 1)
+        >>> end = datetime(2023, 12, 31)
+        >>> data = fetch_asset_data(groups, start, end)
+        >>> print(data['pairs'].head())
+    """
     all_data = {}
 
     for group_name, tickers in asset_groups.items():
