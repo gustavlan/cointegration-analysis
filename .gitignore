@@ -1,5 +1,81 @@
-# Virtual environment
+# Virtual environments
 venv/
+.venv/
+env/
+ENV/
+
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
 .ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Data files (keep sample data, ignore large files)
+data/*.csv
+data/*.parquet
+data/*.h5
+!data/sample_*
+!data/*_sample*
+
+# Output directories
+outputs/
+figures/
+results/
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Documentation
+docs/_build/
+
+# Pre-commit
+.pre-commit-config.yaml.bak
+
+# Temporary files
+*.tmp
+*.temp
+*.backup

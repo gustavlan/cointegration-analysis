@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pairs-cointegration-backtester"
+version = "0.1.0"
+description = "Pairs trading backtester using Engle–Granger, ECM, Johansen, ZA, and systematic CV."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{ name = "Gustav Lantz" }]
+dependencies = [
+    "numpy",
+    "pandas", 
+    "scipy",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "yfinance",
+    "scikit-learn",
+    "plotly",
+]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.isort]
+profile = "black"
+line_length = 100

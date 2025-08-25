@@ -8,16 +8,16 @@ import os
 import sys
 
 
-@contextlib.contextmanager 
+@contextlib.contextmanager
 def silence_fd_output():
     """Context manager to suppress stdout and stderr output."""
     # Save current stdout/stderr
     old_stdout = sys.stdout
     old_stderr = sys.stderr
-    
+
     try:
         # Redirect to devnull
-        with open(os.devnull, 'w') as devnull:
+        with open(os.devnull, "w") as devnull:
             sys.stdout = devnull
             sys.stderr = devnull
             yield
