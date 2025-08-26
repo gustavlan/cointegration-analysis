@@ -187,7 +187,7 @@ def cmd_systematic(args) -> int:
 
         # Run systematic backtest (stitch CV folds)
         logger.info("Running systematic backtest...")
-        systematic_results = run_systematic_backtest(
+        systematic_results, systematic_df = run_systematic_backtest(
             cv_artifacts=cv_artifacts, selected_pairs=args.pairs, summary_df=summary_df
         )
 
