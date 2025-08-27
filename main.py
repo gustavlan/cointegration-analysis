@@ -54,7 +54,7 @@ def load_pair_data(pairs: list[str], data_dir: str = "data") -> dict[str, pd.Dat
             logger.info(f"Loaded {pair} data: {len(df)} rows, {df.shape[1]} columns")
         except Exception as e:
             logger.error(f"Failed to load {pair} data from {csv_file}: {e}")
-            raise ValueError(f"Cannot parse data file for {pair}: {e}")
+            raise ValueError(f"Cannot parse data file for {pair}: {e}") from e
 
     return all_data
 

@@ -62,7 +62,7 @@ def ensure_data_availability(data_dir: str) -> bool:
 
     except Exception as e:
         logger.error(f"Failed to ensure data availability: {e}")
-        raise OSError(f"Cannot prepare data directory: {e}")
+        raise OSError(f"Cannot prepare data directory: {e}") from e
 
 
 def _create_sample_data(data_path: Path, missing_files: list[str]) -> None:

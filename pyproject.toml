@@ -27,9 +27,18 @@ line-length = 100
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "**/*.ipynb",
+    "notebooks/**",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501", "F401", "F841", "B905", "B007", "I001", "UP038"]
+"plotting.py" = ["E501"]
 
 [tool.isort]
 profile = "black"

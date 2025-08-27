@@ -525,7 +525,7 @@ def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, ste
 def run_cross_validation_backtest(
     price1,
     price2,
-    z_thresholds=[1.5, 2.0, 2.5],
+    z_thresholds=None,
     n_splits=3,
     min_train_ratio=0.6,
     min_test_size=63,
@@ -533,6 +533,8 @@ def run_cross_validation_backtest(
     transaction_costs=0.002,
 ):
     """Run time series cross-validation backtest across multiple threshold values."""
+    if z_thresholds is None:
+        z_thresholds = [1.5, 2.0, 2.5]
     data = align_price_data(price1, price2)
     splits = compute_ts_folds(data.index, n_splits, min_train_ratio, min_test_size)
 
@@ -782,7 +784,7 @@ def run_systematic_backtest(cv_artifacts, selected_pairs, summary_df):
             if isinstance(pair_data, pd.DataFrame):
                 # Multiple z_thresholds - choose best by Sharpe ratio
                 best_idx = pair_data['sharpe_ratio_mean'].idxmax()
-                pair_z = best_idx if isinstance(best_idx, (int, float)) else best_idx
+                pair_z = best_idx if isinstance(best_idx, (int | float)) else best_idx
             else:
                 # Single z_threshold
                 pair_z = pair_data.name if hasattr(pair_data, 'name') else 2.0
@@ -1052,7 +1054,7 @@ def adaptive_cointegration_analysis(all_data, selected_pairs, best_z_by_pair):
                 "Pair": pair_name,
                 "Static_Beta": (
                     f"{res['static_beta']:.4f}"
-                    if isinstance(res["static_beta"], (int, float))
+                    if isinstance(res["static_beta"], (int | float))
                     else str(res["static_beta"])
                 ),
                 "Initial_Beta": f"{res['initial_beta']:.4f}",
