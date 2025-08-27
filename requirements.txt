@@ -1,17 +1,6 @@
-############################################################
-# Minimal, portable Python dependencies for this project.  #
-# Keep this list focused on runtime libs used by code/tests #
-# to ensure CI installs cleanly on Python 3.12.             #
-############################################################
-
-# Core scientific stack
 numpy==2.2.3
 pandas==2.2.3
 scipy==1.14.1
 statsmodels==0.14.2
-
-# Plotting
 matplotlib==3.9.2
-
-# Data
 yfinance==0.2.52
