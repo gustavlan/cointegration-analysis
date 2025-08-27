@@ -778,19 +778,19 @@ def run_systematic_backtest(cv_artifacts, selected_pairs, summary_df):
 
     for pair in selected_pairs:
         # Get z_threshold from the multi-index
-        if pair in summary_df.index.get_level_values('pair'):
+        if pair in summary_df.index.get_level_values("pair"):
             pair_data = summary_df.loc[pair]
             # If there are multiple z_thresholds, take the first one (or the one with best Sharpe)
             if isinstance(pair_data, pd.DataFrame):
                 # Multiple z_thresholds - choose best by Sharpe ratio
-                best_idx = pair_data['sharpe_ratio_mean'].idxmax()
+                best_idx = pair_data["sharpe_ratio_mean"].idxmax()
                 pair_z = best_idx if isinstance(best_idx, (int | float)) else best_idx
             else:
                 # Single z_threshold
-                pair_z = pair_data.name if hasattr(pair_data, 'name') else 2.0
+                pair_z = pair_data.name if hasattr(pair_data, "name") else 2.0
         else:
             pair_z = 2.0  # fallback default
-            
+
         try:
             stitched = stitch_cv_folds(cv_artifacts, pair, pair_z)
             stitched_results[pair] = stitched

@@ -24,6 +24,13 @@ dependencies = [
 
 [tool.black]
 line-length = 100
+target-version = ["py312"]
+extend-exclude = """
+(
+    ^notebooks/
+    | \\.ipynb$
+)
+"""
 
 [tool.ruff]
 line-length = 100
