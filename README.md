@@ -4,23 +4,23 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A comprehensive pairs trading research project implementing multiple cointegration methodologies including Engle–Granger tests, Error Correction Models (ECM), structural break detection via Zivot–Andrews tests, Johansen cointegration for multiple series, and systematic backtesting with walk-forward cross-validation.
+Pairs trading research project implementing multiple cointegration methodologies including Engle–Granger tests, Error Correction Models (ECM), structural break detection via Zivot–Andrews tests, Johansen cointegration for multiple series, and systematic backtesting with walk-forward cross-validation.
 
 ## 🎯 Features
 
 - **Comprehensive Cointegration Toolkit**: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen tests
 - **Advanced Backtesting**: Walk-forward CV with systematic result stitching
 - **Threshold Optimization**: Z-score parameter sweeps for optimal entry/exit levels
-- **Rich Visualization**: Equity curves, drawdowns, rolling metrics, and statistical plots
+- **Visualization**: Equity curves, drawdowns, rolling metrics, and statistical plots
 - **Production-Ready**: CLI interface, comprehensive testing, and CI/CD pipeline
-- **Research Notebook**: Complete walkthrough of methodology and results
+- **Research Notebook**: Walkthrough of methodology and results
 
 ## 📊 Methodology
 
 ### Cointegration Testing
 - **Engle-Granger**: Two-step procedure for bivariate cointegration
 - **Augmented Dickey-Fuller (ADF)**: Unit root testing for stationarity
-- **KPSS Test**: Complementary stationarity testing 
+- **KPSS Test**: Complementary stationarity testing (opposite of ADF)
 - **Zivot-Andrews**: Structural break detection in cointegration relationships
 - **Johansen**: Multivariate cointegration analysis for asset triplets
 
@@ -31,7 +31,7 @@ A comprehensive pairs trading research project implementing multiple cointegrati
 
 ### Backtesting Framework
 - **Walk-Forward CV**: Out-of-sample validation with expanding windows
-- **Transaction Costs**: Realistic cost modeling (bid-ask spreads, commissions)
+- **Transaction Costs**: Simply fixed assumption
 - **Risk Management**: Position sizing and maximum drawdown controls
 - **Performance Attribution**: Sharpe ratios, beta analysis, and risk-adjusted returns
 
