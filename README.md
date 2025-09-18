@@ -58,7 +58,7 @@ pip install -r requirements.txt
 # Prepare data directory
 python main.py download --out data
 
-# Run 5-fold cross-validation on multiple pairs
+# Run cross-validation on pairs
 python main.py cv --pairs oil_pair currency_pair agri_pair --cost 0.002 --splits 5
 
 # Generate systematic backtest with plots
@@ -161,10 +161,6 @@ This project is for educational and research purposes only. Past performance doe
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ## 📧 Contact
 
