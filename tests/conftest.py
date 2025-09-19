@@ -1,14 +1,45 @@
 """
-Test fixtures for cointegration analysis test suite.
+Test fixtures and pytest configuration for cointegration analysis test suite.
 
 Provides synthetic data generators for testing statistical methods,
 backtesting algorithms, and plotting functions with known properties.
+Also ensures repository root is on sys.path and implements a supported
+mechanism to skip slow tests unless --slow is provided.
 """
 
+import os
+import sys
 import pytest
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+
+# Ensure project root (containing backtests.py, plotting.py, etc.) is importable
+_TESTS_DIR = os.path.dirname(__file__)
+_PROJECT_ROOT = os.path.abspath(os.path.join(_TESTS_DIR, ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+
+def pytest_addoption(parser):
+    """Add custom command-line options for pytest."""
+    parser.addoption(
+        "--slow",
+        action="store_true",
+        default=False,
+        help="Run tests marked as slow",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked as slow unless --slow was passed."""
+    if config.getoption("--slow"):
+        return
+    skip_slow = pytest.mark.skip(reason="need --slow option to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
 
 
 @pytest.fixture(scope="session")
@@ -254,9 +285,14 @@ def numerical_tolerances():
 # Helper context manager for suppressing output during tests
 @pytest.fixture
 def suppress_warnings():
-    """Context manager to suppress warnings during tests."""
+    """Return a context manager to suppress warnings during tests."""
+    import contextlib
     import warnings
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        yield
+    @contextlib.contextmanager
+    def _suppress():
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            yield
+
+    return _suppress()

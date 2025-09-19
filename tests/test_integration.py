@@ -280,7 +280,4 @@ class TestNumericalStability:
         assert isinstance(eg_result, dict)
 
 
-# Mark slow tests
-pytest.mark.slow = pytest.mark.skipif(
-    not pytest.config.getoption("--slow", default=False), reason="Slow test - run with --slow flag"
-)
+# Slow tests are handled via --slow option added in conftest.py

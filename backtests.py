@@ -58,7 +58,12 @@ def calculate_performance_metrics(
 
     total_return = cumulative_returns.iloc[-1] - 1
     annualized_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / len(strategy_returns)) - 1
-    annualized_vol = strategy_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)  # annualize volatility
+    annualized_vol = strategy_returns.std() * np.sqrt(
+        TRADING_DAYS_PER_YEAR
+    )  # annualize volatility
+    # Treat tiny numerical noise as zero volatility
+    if np.isclose(annualized_vol, 0.0, atol=1e-12):
+        annualized_vol = 0.0
     sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
 
     logger.debug(f"Calculated metrics: Total return {total_return:.4f}, Sharpe {sharpe_ratio:.4f}")
@@ -187,13 +192,31 @@ def estimate_cointegration(price1, price2, add_constant=True):
     if add_constant:
         x_reg = sm.add_constant(x)
         model = sm.OLS(y, x_reg).fit()
-        alpha, beta = model.params[0], model.params[1]
+        # Robust access: handle potential dropped/renamed params
+        params = model.params
+        alpha = params.get("const", float(params.iloc[0]) if len(params) > 0 else 0.0)
+        # Try to fetch beta by column name; fall back to second param if present
+        beta = (
+            params.get(x.name)
+            if x.name in params.index
+            else (float(params.iloc[1]) if len(params) > 1 else 0.0)
+        )
     else:
-        model = sm.OLS(y, x).fit()  # force through origin
-        alpha, beta = 0, model.params[0]
+        # Force-through-origin regression
+        model = sm.OLS(y, x).fit()
+        params = model.params
+        alpha = 0.0
+        beta = float(params.iloc[0]) if len(params) > 0 else 0.0
 
     spread = y - alpha - beta * x  # calculate cointegrating residual
-    adf_pvalue = adfuller(spread.dropna(), maxlag=1)[1]  # test spread stationarity
+    # ADF on spread: handle constant/short series gracefully
+    try:
+        if np.isclose(spread.std(ddof=0), 0.0, atol=1e-12):
+            adf_pvalue = 0.0  # constant spread is (degenerate) stationary
+        else:
+            adf_pvalue = adfuller(spread.dropna(), maxlag=1)[1]
+    except Exception:
+        adf_pvalue = 1.0
 
     return {
         "alpha": alpha,
@@ -237,7 +260,11 @@ def generate_trading_signals(spread, z_threshold=2.0):
         >>> print(f"Generated {n_long_signals} long and {n_short_signals} short signals")
     """
     mean_spread, std_spread = spread.mean(), spread.std()
-    z_scores = (spread - mean_spread) / std_spread  # standardize spread
+    if np.isclose(std_spread, 0.0, atol=1e-12):
+        # Avoid division by zero for constant spreads
+        z_scores = pd.Series(0.0, index=spread.index)
+    else:
+        z_scores = (spread - mean_spread) / std_spread  # standardize spread
     positions = np.where(
         z_scores > z_threshold, -1, np.where(z_scores < -z_threshold, 1, 0)
     )  # long/short signals
@@ -287,9 +314,14 @@ def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
         >>> total_return = returns_data['cumulative_returns'].iloc[-1] - 1
         >>> print(f"Total strategy return: {total_return:.2%}")
     """
-    returns1, returns2 = price1.pct_change(), price2.pct_change()
-    aligned_data = pd.concat([returns1, returns2, positions], axis=1).dropna()
-    r1, r2, pos = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1], aligned_data.iloc[:, 2]
+    # Compute returns without dropping the first timestamp
+    r1 = price1.pct_change().fillna(0)
+    r2 = price2.pct_change().fillna(0)
+    # Align on full index, do not drop rows
+    idx = price1.index.union(price2.index).union(positions.index)
+    r1 = r1.reindex(idx).fillna(0)
+    r2 = r2.reindex(idx).fillna(0)
+    pos = positions.reindex(idx)
     pos_lagged = pos.shift(1)  # use lagged positions to avoid look-ahead bias
     spread_returns = r1 - beta * r2  # hedge portfolio returns
     strategy_returns = (pos_lagged * spread_returns).fillna(0)
@@ -398,12 +430,29 @@ def compute_rolling_beta(
         >>> avg_beta = rolling_beta.dropna().mean()
         >>> print(f"Average market beta: {avg_beta:.2f}")
     """
-    excess_market_returns = market_returns - risk_free_rate / TRADING_DAYS_PER_YEAR
-    aligned_data = pd.concat([strategy_returns, excess_market_returns], axis=1).dropna()
-    strat_ret, mkt_ret = aligned_data.iloc[:, 0], aligned_data.iloc[:, 1]
-    rolling_cov = strat_ret.rolling(window=window).cov(mkt_ret)  # rolling covariance
-    rolling_var = mkt_ret.rolling(window=window).var()  # rolling market variance
-    return rolling_cov / rolling_var  # beta = cov(strategy, market) / var(market)
+    # Align series and compute excess market returns (if any risk-free)
+    excess_mkt = market_returns - risk_free_rate / TRADING_DAYS_PER_YEAR
+    aligned = pd.concat([strategy_returns, excess_mkt], axis=1).dropna()
+    if aligned.empty:
+        # Preserve index shape if either input is empty
+        return pd.Series(dtype=float)
+
+    y = aligned.iloc[:, 0]
+    x = aligned.iloc[:, 1]
+
+    # Rolling statistics
+    mean_x = x.rolling(window=window).mean()
+    mean_y = y.rolling(window=window).mean()
+    mean_xy = (x * y).rolling(window=window).mean()
+    mean_x2 = (x * x).rolling(window=window).mean()
+
+    # Covariance and variance (centered)
+    cov_xy = mean_xy - mean_x * mean_y
+    var_x = mean_x2 - mean_x.pow(2)
+
+    beta = cov_xy / var_x
+    beta.name = "rolling_beta"
+    return beta
 
 
 def backtest_pair_strategy(
@@ -503,9 +552,11 @@ def compute_ts_folds(index, n_splits, min_train_ratio=0.6, min_test_size=63, ste
     """Create time series cross-validation folds respecting temporal order."""
     T = len(index)
     if step is None:
-        step = min_test_size // 2  # default step size
+        step = max(1, min_test_size // 2)  # default step size, at least 1
     min_train_size = int(T * min_train_ratio)
     available_for_splits = T - min_train_size - min_test_size
+    if available_for_splits < 0:
+        return []
     max_splits = max(1, available_for_splits // step + 1)
     actual_n_splits = min(n_splits, max_splits)
 
@@ -940,6 +991,7 @@ def backtest_with_kalman_filter(
     strategy_returns = pd.Series(strategy_returns, index=test_data.index)
     cumulative_returns = (1 + strategy_returns).cumprod()
     perf_metrics = calculate_performance_metrics(strategy_returns, cumulative_returns)
+    dd = compute_drawdowns(cumulative_returns)
 
     return {
         "strategy_returns": strategy_returns,
@@ -947,6 +999,7 @@ def backtest_with_kalman_filter(
         "adaptive_betas": pd.Series(adaptive_betas, index=test_data.index),
         "performance_metrics": {
             **perf_metrics,
+            "max_drawdown": dd["max_drawdown"],
             "initial_beta": initial_coint["beta"],
             "final_beta": adaptive_betas[-1] if adaptive_betas else initial_coint["beta"],
             "beta_volatility": np.std(adaptive_betas) if len(adaptive_betas) > 1 else 0,
