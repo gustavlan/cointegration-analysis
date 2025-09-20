@@ -11,6 +11,7 @@ try:  # pragma: no cover
     import matplotlib.figure
 
     if not hasattr(matplotlib.figure.Figure, "get_legends"):
+
         def _get_legends(self):
             # Prefer stored legends if available
             if hasattr(self, "legends") and self.legends:

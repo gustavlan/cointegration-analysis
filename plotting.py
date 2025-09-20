@@ -375,9 +375,13 @@ def plot_kalman_beta_evolution(
         fig, axes = res
     else:
         fig = plt.figure(figsize=(12, 4 * len(selected_pairs)))
-        axes = [fig.add_subplot(len(selected_pairs), 1, 1)] if len(selected_pairs) == 1 else [
-            fig.add_subplot(len(selected_pairs), 1, i + 1) for i in range(len(selected_pairs))
-        ]
+        axes = (
+            [fig.add_subplot(len(selected_pairs), 1, 1)]
+            if len(selected_pairs) == 1
+            else [
+                fig.add_subplot(len(selected_pairs), 1, i + 1) for i in range(len(selected_pairs))
+            ]
+        )
     if len(selected_pairs) == 1 and not isinstance(axes, list):
         axes = [axes]
 
