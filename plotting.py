@@ -2,15 +2,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from backtests import (
     compute_rolling_beta as _rolling_beta,
-)
-from backtests import (
     compute_rolling_sharpe as _rolling_sharpe,
 )
 from cointegration_tests import engle_granger, ou_params
