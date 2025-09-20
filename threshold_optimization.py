@@ -17,7 +17,8 @@ try:  # pragma: no cover
                 return self.legends
             return [ax.get_legend() for ax in self.get_axes() if ax.get_legend() is not None]
 
-        setattr(matplotlib.figure.Figure, "get_legends", _get_legends)
+        # Attach helper to Figure without setattr per Ruff B010
+        matplotlib.figure.Figure.get_legends = _get_legends  # type: ignore[attr-defined]
 except Exception:  # pragma: no cover
     pass
 
