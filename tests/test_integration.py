@@ -271,7 +271,7 @@ class TestNumericalStability:
 
         # Misaligned price series
         price1 = pd.Series(range(100), index=dates)
-        price2 = pd.Series(range(100), index=dates[10:])  # Start 10 days later
+        price2 = pd.Series(range(len(dates[10:])), index=dates[10:])  # Start 10 days later
 
         df_misaligned = pd.DataFrame({"y": price1, "x": price2})
         eg_result = engle_granger(df_misaligned, "y", "x")

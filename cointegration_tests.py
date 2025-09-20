@@ -7,7 +7,11 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, kpss, zivot_andrews
 from statsmodels.tsa.vector_ar.var_model import VAR
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
-from silence_fd_output import silence_fd_output as silence_fd_output
+
+from silence_fd_output import silence_fd_output as _silence_fd_output
+
+# Re-export for tests while marking the import as used
+silence_fd_output = _silence_fd_output
 
 # Configure logging
 logger = logging.getLogger(__name__)
