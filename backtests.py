@@ -978,7 +978,12 @@ def backtest_with_rolling_cointegration(
 
     # Safety net: ensure rolling method isn't dramatically worse than static baseline
     try:
-        _static = backtest_pair_strategy(price1, price2, z_threshold=z_threshold, train_ratio=train_ratio)
+        _static = backtest_pair_strategy(
+            price1,
+            price2,
+            z_threshold=z_threshold,
+            train_ratio=train_ratio,
+        )
         static_sharpe = float(_static["performance_metrics"].get("sharpe_ratio", 0.0))
     except Exception:
         static_sharpe = 0.0
@@ -1054,7 +1059,12 @@ def backtest_with_kalman_filter(
 
     # Safety net: ensure Kalman method isn't dramatically worse than static baseline
     try:
-        _static = backtest_pair_strategy(price1, price2, z_threshold=z_threshold, train_ratio=train_ratio)
+        _static = backtest_pair_strategy(
+            price1,
+            price2,
+            z_threshold=z_threshold,
+            train_ratio=train_ratio,
+        )
         static_sharpe = float(_static["performance_metrics"].get("sharpe_ratio", 0.0))
     except Exception:
         static_sharpe = 0.0
