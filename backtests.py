@@ -930,7 +930,7 @@ def backtest_with_rolling_cointegration(
             # Hysteresis: enter at threshold, exit at half-threshold to reduce churn
             positions_series = pd.Series(0, index=period_data.index, dtype=int)
             current_pos = prev_pos
-            for i, ts in enumerate(period_data.index):
+            for i, _ts in enumerate(period_data.index):
                 z = float(z_scores.iloc[i])
                 if current_pos == 0:
                     if (z > z_threshold) and (adf_pvalue <= 0.2) and r2_ok:
@@ -964,7 +964,10 @@ def backtest_with_rolling_cointegration(
             hist_rets = all_returns.loc[all_returns.index.intersection(hist_idx)]
             if len(hist_rets) >= 20:
                 ann_vol = hist_rets.std() * np.sqrt(TRADING_DAYS_PER_YEAR)
-                ann_ret = (1 + hist_rets).prod() ** (TRADING_DAYS_PER_YEAR / max(len(hist_rets), 1)) - 1
+                ann_ret = (
+                    (1 + hist_rets).prod() 
+                    ** (TRADING_DAYS_PER_YEAR / max(len(hist_rets), 1)) - 1
+                )
                 hist_sharpe = ann_ret / ann_vol if ann_vol not in (0, None) and ann_vol > 0 else 0
                 if hist_sharpe < 0:
                     strategy_returns = pd.Series(0.0, index=period_data.index)
