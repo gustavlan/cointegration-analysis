@@ -4,6 +4,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from statsmodels.stats.diagnostic import acorr_ljungbox
 from statsmodels.tsa.stattools import adfuller, kpss, zivot_andrews
 from statsmodels.tsa.vector_ar.var_model import VAR
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
@@ -167,16 +168,43 @@ def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
     # Reconstruct residuals over the aligned index
     spread = model.resid
     # Robust ADF on residuals
+    use_maxlag = maxlag
     try:
-        if np.isclose(spread.std(ddof=0), 0.0, atol=1e-12):
+        clean_spread = spread.dropna()
+        if np.isclose(clean_spread.std(ddof=0), 0.0, atol=1e-12):
             pval = 0.0
+            use_maxlag = 0
         else:
             # Ensure maxlag fits sample size
-            nobs = len(spread.dropna())
+            nobs = len(clean_spread)
             use_maxlag = min(maxlag, max(0, (nobs // 2) - 2))
-            pval = adfuller(spread.dropna(), maxlag=use_maxlag, autolag=None)[1]
+            adf_res = adfuller(clean_spread, maxlag=use_maxlag, autolag=None)
+            pval = adf_res[1]
+            adf_stat = adf_res[0]
     except Exception:
         pval = 1.0
+        adf_stat = np.nan
+    else:
+        if "adf_stat" not in locals():  # pragma: no cover - defensive fallback
+            adf_stat = np.nan
+    lb_pvalue = np.nan
+    try:
+        # Use modest lag proportional to sample size for whiteness check
+        clean_spread = spread.dropna()
+        if len(clean_spread) >= 10:
+            lb_lag = max(1, min(10, len(clean_spread) // 5))
+            _, lb_pvals = acorr_ljungbox(clean_spread, lags=[lb_lag], return_df=False)
+            lb_pvalue = float(lb_pvals[0])
+    except Exception:
+        pass
+    if hasattr(model, "tvalues"):
+        tvals = model.tvalues
+        if hasattr(tvals, "get"):
+            beta_tstat = float(tvals.get(x, tvals.iloc[-1] if len(tvals) > 0 else np.nan))
+        else:
+            beta_tstat = float(tvals[-1]) if len(tvals) > 0 else np.nan
+    else:
+        beta_tstat = np.nan
     if verbose:
         print(f"ADF(p={pval:.3f}) → {'stationary' if pval < 0.05 else 'non-stationary'}")
     return {
@@ -185,6 +213,10 @@ def engle_granger(df, y, x, maxlag=1, freq="B", verbose=False):
         "eg_pvalue": pval,
         "spread": spread if pval <= 0.05 else None,
         "maxlag": maxlag,
+        "used_lag": use_maxlag,
+        "eg_stat": adf_stat,
+        "resid_lb_pvalue": lb_pvalue,
+        "beta_tstat": beta_tstat,
     }
 
 
@@ -321,6 +353,9 @@ def ou_params(spread, freq="B"):
     df.columns = ["dS", "S1"]
     model = sm.OLS(df["dS"], sm.add_constant(df["S1"])).fit()
     theta = -model.params["S1"]  # mean reversion speed
+    if theta <= 0:
+        logger.warning("Estimated OU theta %.6f non-positive; clipping to stability floor.", theta)
+        theta = max(theta, 1e-6)
     mu = model.params["const"] / theta  # long-run mean
     hl = np.log(2) / theta  # half-life calculation
     return {"ou_mu": mu, "ou_theta": theta, "OU_HalfLife": hl, "ou_sigma": spread.std()}

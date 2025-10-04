@@ -50,6 +50,10 @@ def load_pair_data(pairs: list[str], data_dir: str = "data") -> dict[str, pd.Dat
 
         try:
             df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
+            df = df.sort_index()
+            if df.index.duplicated().any():
+                logger.warning("Dropping duplicated timestamps in %s", pair)
+                df = df[~df.index.duplicated(keep="last")]
             all_data[pair] = df
             logger.info(f"Loaded {pair} data: {len(df)} rows, {df.shape[1]} columns")
         except Exception as e:

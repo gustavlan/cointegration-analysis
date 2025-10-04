@@ -56,8 +56,16 @@ def calculate_performance_metrics(
             "sharpe_ratio": 0,
         }
 
-    total_return = cumulative_returns.iloc[-1] - 1
-    annualized_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / len(strategy_returns)) - 1
+    terminal_value = float(cumulative_returns.iloc[-1])
+    total_return = terminal_value - 1
+    periods = max(len(strategy_returns), 1)
+    if terminal_value <= 0:
+        logger.warning(
+            "Non-positive terminal value %.4f detected; clipping annualized return.", terminal_value
+        )
+        annualized_return = -1.0
+    else:
+        annualized_return = terminal_value ** (TRADING_DAYS_PER_YEAR / periods) - 1
     annualized_vol = strategy_returns.std() * np.sqrt(TRADING_DAYS_PER_YEAR)  # annualize volatility
     # Treat tiny numerical noise as zero volatility
     if np.isclose(annualized_vol, 0.0, atol=1e-12):
@@ -319,8 +327,8 @@ def calculate_strategy_returns(price1, price2, positions, beta, alpha=0):
     idx = price1.index.union(price2.index).union(positions.index)
     r1 = r1.reindex(idx).fillna(0)
     r2 = r2.reindex(idx).fillna(0)
-    pos = positions.reindex(idx)
-    pos_lagged = pos.shift(1)  # use lagged positions to avoid look-ahead bias
+    pos = positions.reindex(idx).fillna(0)
+    pos_lagged = pos.shift(1).fillna(0)  # use lagged positions to avoid look-ahead bias
     spread_returns = r1 - beta * r2  # hedge portfolio returns
     strategy_returns = (pos_lagged * spread_returns).fillna(0)
     cumulative_returns = (1 + strategy_returns).cumprod()
@@ -708,7 +716,8 @@ def run_cv_over_pairs(
 
             pair_results["pair"] = pair_name
             all_results.append(pair_results)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Skipping %s during CV: %s", pair_name, exc)
             continue
 
     if all_results:
