@@ -108,7 +108,7 @@ agri_pair             0.067        0.156      0.43     -0.127       0.58
 ## ✅ Results Highlights
 
 - Walk-forward CV on the provided commodity and currency pairs produces Sharpe ratios between 0.4 and 0.7 while keeping drawdowns contained (see `tests/test_backtests.py`).
-- Estimated Ornstein–Uhlenbeck half-lives mostly fall below 15 trading days, underscoring mean-reverting spread dynamics (via `cointegration_tests.ou_params`).
+- Estimated Ornstein–Uhlenbeck half-lives mostly fall below 15 trading days, underscoring mean-reverting spread dynamics (via `cointegration_analysis.analytics.cointegration.ou_params`).
 - Rolling Sharpe and beta panels illustrate stability versus the S&P 500 benchmark and are exported to `docs/images/` through the CLI plotting utilities.
 - Threshold sweeps quantify the trade-off between cumulative P&L and trading frequency, guiding parameter selection without manual tuning.
 
@@ -130,22 +130,17 @@ pairs-cointegration-backtester/
 │       │   └── download.py           # Data ingestion utilities
 │       └── utils/
 │           └── silence_fd_output.py  # Context manager helpers
-├── backtests.py               # Legacy import shim → analytics.backtesting
-├── cointegration_tests.py     # Legacy import shim → analytics.cointegration
-├── plotting.py                # Legacy import shim → analytics.plotting
-├── threshold_optimization.py  # Legacy import shim → analytics.optimization
-├── data_download.py           # Legacy import shim → data.download
-├── main.py                    # Legacy CLI shim (calls cointegration_analysis.cli:main)
+├── docs/                      # Documentation and figures
 ├── notebooks/                 # Research notebooks
 ├── tests/                     # Test suite
-├── docs/                      # Documentation and figures
 ├── data/                      # Sample datasets
-└── requirements.txt           # Dependencies
+├── pyproject.toml             # Project metadata
+├── requirements.txt           # Pinned dependencies for reproduction
+└── README.md                  # Project overview and usage
 ```
 
-> The thin top-level shims keep existing notebook/test imports working, while
-> new development should target the `cointegration_analysis` package.
-
+> Legacy top-level module names have been removed. Update any custom
+> notebooks/scripts to import from `cointegration_analysis` directly.
 ## 🔬 Research Notebook
 
 Explore the complete methodology in our [Jupyter notebook](notebooks/analysis.ipynb), which includes:

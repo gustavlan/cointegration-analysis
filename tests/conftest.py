@@ -15,7 +15,7 @@ import pandas as pd
 from scipy import stats
 
 
-# Ensure project root (containing backtests.py, plotting.py, etc.) is importable
+# Ensure the packaged source tree (and project root for resources) is importable
 _TESTS_DIR = os.path.dirname(__file__)
 _PROJECT_ROOT = os.path.abspath(os.path.join(_TESTS_DIR, ".."))
 _SRC_ROOT = os.path.join(_PROJECT_ROOT, "src")

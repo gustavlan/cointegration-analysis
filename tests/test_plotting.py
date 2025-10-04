@@ -1,7 +1,7 @@
 """
-Tests for plotting.py module.
+Tests for ``cointegration_analysis.analytics.plotting``.
 
-Tests plotting and analysis functions with focus on data structure validation
+Validates plotting and analysis helpers with focus on data structure validation
 and smoke tests. Visual output validation is limited to object creation.
 """
 
@@ -14,7 +14,11 @@ import matplotlib
 matplotlib.use("Agg")  # Use non-interactive backend for testing
 
 # Import functions under test
-from plotting import analyze_pairs_nb, plot_systematic_performance, plot_kalman_beta_evolution
+from cointegration_analysis.analytics.plotting import (
+    analyze_pairs_nb,
+    plot_systematic_performance,
+    plot_kalman_beta_evolution,
+)
 
 
 class TestAnalyzePairsNB:
@@ -26,7 +30,7 @@ class TestAnalyzePairsNB:
         selected = portfolio["selected"][:2]  # Use first 2 pairs to speed up test
 
         # Mock the plotting to avoid display issues in tests
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(
                 portfolio["all_data"],
                 selected,
@@ -74,7 +78,7 @@ class TestAnalyzePairsNB:
         all_data = {"independent_pair": pd.DataFrame({"y": y_series, "x": x_series})}
         selected = ["independent_pair"]
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(
                 all_data, selected, Z_min=1.0, Z_max=2.0, dZ=0.5
             )
@@ -90,7 +94,7 @@ class TestAnalyzePairsNB:
         all_data = {"test_pair": pd.DataFrame({"asset1": data["y"], "asset2": data["x"]})}
         selected = ["test_pair"]
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             # Test with OU parameters disabled
             summary_no_ou, _ = analyze_pairs_nb(
                 all_data, selected, Z_min=1.5, Z_max=2.0, dZ=0.25, use_ou=False, normalize=False
@@ -117,7 +121,7 @@ class TestAnalyzePairsNB:
 
         all_data = {"clean_pair": pd.DataFrame({"y": y_prices, "x": x_prices})}
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(
                 all_data, ["clean_pair"], Z_min=0.5, Z_max=3.0, dZ=0.25
             )
@@ -137,8 +141,8 @@ class TestAnalyzePairsNB:
 class TestPlotSystematicPerformance:
     """Test systematic performance plotting functionality."""
 
-    @patch("plotting.plt.show")
-    @patch("plotting.plt.subplots")
+    @patch("cointegration_analysis.analytics.plotting.plt.show")
+    @patch("cointegration_analysis.analytics.plotting.plt.subplots")
     def test_plot_systematic_performance_structure(
         self, mock_subplots, mock_show, sample_portfolio_data, make_benchmark
     ):
@@ -229,7 +233,11 @@ class TestPlotSystematicPerformance:
         def mock_rolling_func(returns, window=126):
             return pd.Series(np.random.randn(len(returns)) * 0.5, index=returns.index)
 
-        with patch("plotting.plt.show"), patch("plotting.plt.subplots") as mock_subplots:
+        with patch(
+            "cointegration_analysis.analytics.plotting.plt.show"
+        ), patch(
+            "cointegration_analysis.analytics.plotting.plt.subplots"
+        ) as mock_subplots:
             mock_fig = MagicMock()
             mock_axes = np.array([[MagicMock() for _ in range(3)] for _ in range(4)])
             mock_subplots.return_value = (mock_fig, mock_axes)
@@ -249,8 +257,8 @@ class TestPlotSystematicPerformance:
 class TestPlotKalmanBetaEvolution:
     """Test Kalman filter beta evolution plotting."""
 
-    @patch("plotting.plt.show")
-    @patch("plotting.plt.subplots")
+    @patch("cointegration_analysis.analytics.plotting.plt.show")
+    @patch("cointegration_analysis.analytics.plotting.plt.subplots")
     def test_plot_kalman_beta_evolution_single_pair(self, mock_subplots, mock_show):
         """Test beta evolution plotting for single pair."""
         # Setup mock matplotlib objects
@@ -278,8 +286,8 @@ class TestPlotKalmanBetaEvolution:
         mock_ax.plot.assert_called_once()
         mock_ax.set_title.assert_called_once_with("test_pair: Beta Evolution")
 
-    @patch("plotting.plt.show")
-    @patch("plotting.plt.subplots")
+    @patch("cointegration_analysis.analytics.plotting.plt.show")
+    @patch("cointegration_analysis.analytics.plotting.plt.subplots")
     def test_plot_kalman_beta_evolution_multiple_pairs(self, mock_subplots, mock_show):
         """Test beta evolution plotting for multiple pairs."""
         # Setup mock for multiple subplots
@@ -320,7 +328,11 @@ class TestPlotKalmanBetaEvolution:
         selected_pairs = ["nonexistent_pair"]
 
         # Should not crash even with missing data
-        with patch("plotting.plt.show"), patch("plotting.plt.subplots") as mock_subplots:
+        with patch(
+            "cointegration_analysis.analytics.plotting.plt.show"
+        ), patch(
+            "cointegration_analysis.analytics.plotting.plt.subplots"
+        ) as mock_subplots:
             mock_fig = MagicMock()
             mock_ax = MagicMock()
             mock_subplots.return_value = (mock_fig, [mock_ax])
@@ -339,7 +351,7 @@ class TestPlottingIntegration:
         selected = portfolio["selected"][:2]  # Limit for test speed
 
         # Step 1: Analyze pairs to get optimal thresholds
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(
                 portfolio["all_data"], selected, Z_min=1.0, Z_max=2.0, dZ=0.5
             )
@@ -372,7 +384,11 @@ class TestPlottingIntegration:
             def mock_rolling_func(returns, window=126):
                 return pd.Series(np.random.randn(len(returns)) * 0.5, index=returns.index)
 
-            with patch("plotting.plt.show"), patch("plotting.plt.subplots"):
+            with patch(
+                "cointegration_analysis.analytics.plotting.plt.show"
+            ), patch(
+                "cointegration_analysis.analytics.plotting.plt.subplots"
+            ):
                 result_df = plot_systematic_performance(
                     stitched_results,
                     list(stitched_results.keys()),
@@ -391,7 +407,7 @@ class TestPlottingIntegration:
         empty_all_data = {}
         empty_selected = []
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(empty_all_data, empty_selected)
 
         assert isinstance(summary_df, pd.DataFrame)
@@ -400,7 +416,11 @@ class TestPlottingIntegration:
         assert len(opt_tables) == 0
 
         # Test plot_systematic_performance with empty stitched results
-        with patch("plotting.plt.show"), patch("plotting.plt.subplots") as mock_subplots:
+        with patch(
+            "cointegration_analysis.analytics.plotting.plt.show"
+        ), patch(
+            "cointegration_analysis.analytics.plotting.plt.subplots"
+        ) as mock_subplots:
             mock_fig = MagicMock()
             mock_axes = np.array([[MagicMock() for _ in range(3)] for _ in range(4)])
             mock_subplots.return_value = (mock_fig, mock_axes)
@@ -425,7 +445,7 @@ class TestPlottingEdgeCases:
         data = make_cointegrated_pair(T=100, beta=1.0)  # Minimal data
         all_data = {"test_pair": pd.DataFrame({"y": data["y"], "x": data["x"]})}
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             # Test with very wide Z range
             summary_wide, _ = analyze_pairs_nb(
                 all_data, ["test_pair"], Z_min=0.1, Z_max=5.0, dZ=1.0
@@ -450,7 +470,11 @@ class TestPlottingEdgeCases:
             "detailed_results": {"minimal_pair": {"adaptive_betas": single_point_series}}
         }
 
-        with patch("plotting.plt.show"), patch("plotting.plt.subplots"):
+        with patch(
+            "cointegration_analysis.analytics.plotting.plt.show"
+        ), patch(
+            "cointegration_analysis.analytics.plotting.plt.subplots"
+        ):
             # Should handle minimal data gracefully
             result = plot_kalman_beta_evolution(kalman_analysis, ["minimal_pair"])
             assert result is None  # Function returns None
@@ -460,7 +484,7 @@ class TestPlottingEdgeCases:
         data = make_cointegrated_pair(T=300, beta=1.2, rho=0.6)
         all_data = {"cost_test": pd.DataFrame({"y": data["y"], "x": data["x"]})}
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             # No transaction costs
             summary_no_cost, tables_no_cost = analyze_pairs_nb(
                 all_data, ["cost_test"], Z_min=1.0, Z_max=2.5, dZ=0.5, cost=0.0

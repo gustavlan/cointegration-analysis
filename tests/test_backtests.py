@@ -1,7 +1,7 @@
 """
-Tests for backtests.py module.
+Tests for ``cointegration_analysis.analytics.backtesting``.
 
-Tests all backtesting functions including strategy execution, cross-validation,
+Exercises backtesting utilities including strategy execution, cross-validation,
 performance metrics, and rolling analysis methods.
 """
 
@@ -12,7 +12,7 @@ from unittest.mock import patch
 import warnings
 
 # Import functions under test
-from backtests import (
+from cointegration_analysis.analytics.backtesting import (
     calculate_performance_metrics,
     align_price_data,
     split_train_test,

@@ -1,7 +1,7 @@
 """
-Tests for threshold_optimization.py module.
+Tests for ``cointegration_analysis.analytics.optimization``.
 
-Tests threshold optimization and backtesting functionality for spread trading strategies.
+Exercises threshold optimization and backtesting functionality for spread trading strategies.
 """
 
 import pytest
@@ -13,7 +13,11 @@ import matplotlib
 matplotlib.use("Agg")  # Use non-interactive backend for testing
 
 # Import functions under test
-from threshold_optimization import backtest_spread, optimize_thresholds, plot_threshold_tradeoff
+from cointegration_analysis.analytics.optimization import (
+    backtest_spread,
+    optimize_thresholds,
+    plot_threshold_tradeoff,
+)
 
 
 class TestBacktestSpread:

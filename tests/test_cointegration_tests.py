@@ -1,7 +1,7 @@
 """
-Tests for cointegration_tests.py module.
+Tests for ``cointegration_analysis.analytics.cointegration``.
 
-Tests all statistical functions for cointegration analysis including
+Exercises statistical functions for cointegration analysis including
 unit root tests, cointegration tests, model selection, and time series analysis.
 """
 
@@ -12,7 +12,7 @@ from unittest.mock import patch
 import warnings
 
 # Import functions under test
-from cointegration_tests import (
+from cointegration_analysis.analytics.cointegration import (
     matrix_ols_regression,
     adf_results,
     kpss_results,
@@ -482,7 +482,10 @@ def silence_fd_output():
 @pytest.fixture(autouse=True)
 def patch_silence_fd_output():
     """Auto-patch the missing silence_fd_output function."""
-    with patch("cointegration_tests.silence_fd_output", side_effect=silence_fd_output):
+    with patch(
+        "cointegration_analysis.analytics.cointegration.silence_fd_output",
+        side_effect=silence_fd_output,
+    ):
         yield
 
 

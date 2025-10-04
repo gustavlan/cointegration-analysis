@@ -686,8 +686,6 @@ def johansen_sensitivity_summary(all_data, min_obs=120):
                     continue
                 for det_order in [-1, 0, 1]:  # test different deterministic trend assumptions
                     try:
-                        from silence_fd_output import silence_fd_output
-
                         with silence_fd_output():
                             res = johansen(dfx, det_order=det_order)
                         total += 1

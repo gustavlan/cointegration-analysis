@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 
-from main import load_pair_data
+from cointegration_analysis.cli import load_pair_data
 
 
 def test_load_pair_data_sorts_and_deduplicates(tmp_path, caplog):

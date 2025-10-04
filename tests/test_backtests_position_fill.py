@@ -1,6 +1,6 @@
 import pandas as pd
 
-from backtests import calculate_strategy_returns
+from cointegration_analysis.analytics.backtesting import calculate_strategy_returns
 
 
 def test_calculate_strategy_returns_fills_missing_positions():

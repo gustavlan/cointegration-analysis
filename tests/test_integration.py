@@ -21,9 +21,13 @@ class TestPairsTradeIntegration:
         portfolio = sample_portfolio_data
 
         # Import functions from all modules
-        from cointegration_tests import engle_granger
-        from backtests import run_cv_over_pairs, summarize_cv, stitch_cv_folds
-        from plotting import analyze_pairs_nb
+        from cointegration_analysis.analytics.cointegration import engle_granger
+        from cointegration_analysis.analytics.backtesting import (
+            run_cv_over_pairs,
+            summarize_cv,
+            stitch_cv_folds,
+        )
+        from cointegration_analysis.analytics.plotting import analyze_pairs_nb
 
         # Step 1: Test cointegration on all pairs
         cointegration_results = {}
@@ -45,7 +49,7 @@ class TestPairsTradeIntegration:
         # Step 2: Optimize thresholds for cointegrated pairs
         selected_subset = cointegrated_pairs[:2]  # Limit for test speed
 
-        with patch("plotting.plt.show"):
+        with patch("cointegration_analysis.analytics.plotting.plt.show"):
             summary_df, opt_tables = analyze_pairs_nb(
                 portfolio["all_data"],
                 selected_subset,
@@ -101,7 +105,7 @@ class TestPairsTradeIntegration:
 
     def test_rolling_vs_static_comparison(self, make_cointegrated_pair):
         """Test comparison between static and rolling cointegration approaches."""
-        from backtests import (
+        from cointegration_analysis.analytics.backtesting import (
             backtest_pair_strategy,
             backtest_with_rolling_cointegration,
             backtest_with_kalman_filter,
@@ -155,8 +159,11 @@ class TestPairsTradeIntegration:
         Comprehensive systematic backtest across portfolio.
         Marked as slow - only run with pytest -m slow.
         """
-        from backtests import run_systematic_backtest, rolling_cointegration_analysis
-        from plotting import plot_systematic_performance
+        from cointegration_analysis.analytics.backtesting import (
+            rolling_cointegration_analysis,
+            run_systematic_backtest,
+        )
+        from cointegration_analysis.analytics.plotting import plot_systematic_performance
 
         portfolio = sample_portfolio_data
         selected_pairs = portfolio["selected"]
@@ -206,7 +213,7 @@ class TestNumericalStability:
 
     def test_extreme_parameter_values(self, make_cointegrated_pair):
         """Test system behavior with extreme parameter values."""
-        from backtests import backtest_pair_strategy
+        from cointegration_analysis.analytics.backtesting import backtest_pair_strategy
 
         # Very high beta
         high_beta_data = make_cointegrated_pair(T=300, beta=10.0, rho=0.8)
@@ -232,7 +239,10 @@ class TestNumericalStability:
 
     def test_market_stress_scenarios(self, make_benchmark):
         """Test system during market stress (high volatility, crashes)."""
-        from backtests import compute_rolling_beta, compute_rolling_sharpe
+        from cointegration_analysis.analytics.backtesting import (
+            compute_rolling_beta,
+            compute_rolling_sharpe,
+        )
 
         # High volatility market
         stress_market = make_benchmark(T=200, annual_return=-0.20, annual_vol=0.50)
@@ -257,7 +267,7 @@ class TestNumericalStability:
 
     def test_data_quality_issues(self):
         """Test handling of poor quality data."""
-        from cointegration_tests import adf_results, engle_granger
+        from cointegration_analysis.analytics.cointegration import adf_results, engle_granger
 
         # Series with many gaps
         dates = pd.date_range("2020-01-01", periods=100, freq="B")
