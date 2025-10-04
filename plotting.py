@@ -180,7 +180,12 @@ def plot_systematic_performance(*args, **kwargs):
     plt.title("Systematic Strategy Performance")
     plt.savefig(plot_file, dpi=300, bbox_inches="tight")
     plt.close()
-    return [str(plot_file)]
+
+    saved_paths = [str(plot_file)]
+    overlay_path = save_spread_position_overlay(systematic_results, output_path)
+    if overlay_path:
+        saved_paths.append(overlay_path)
+    return saved_paths
 
 
 def plot_systematic_performance_original(
@@ -301,17 +306,20 @@ def plot_systematic_performance_original(
         # Equity curve
         ax0.plot(equity, color=colors[i], linewidth=1)
         ax0.set_title(f'{pair_name.replace("_", " ").title()} - Equity')
+        ax0.set_ylabel("Cumulative NAV")
         ax0.grid(True, alpha=0.3)
 
         # Drawdown
         ax1.fill_between(drawdown.index, drawdown * 100, 0, color=colors[i], alpha=0.3)
         ax1.set_title(f'{pair_name.replace("_", " ").title()} - Drawdown')
+        ax1.set_ylabel("Drawdown (%)")
         ax1.grid(True, alpha=0.3)
 
         # Rolling Sharpe
         rolling_sharpe = compute_rolling_sharpe(strategy_returns, window=126)
         ax2.plot(rolling_sharpe, color=colors[i], linewidth=2)
         ax2.set_title(f'{pair_name.replace("_", " ").title()} - Rolling Sharpe')
+        ax2.set_ylabel("Sharpe")
         ax2.grid(True, alpha=0.3)
 
         # Rolling Beta to market benchmark
@@ -323,6 +331,7 @@ def plot_systematic_performance_original(
             rolling_beta = compute_rolling_beta(strategy_returns, window=126)
         ax3.plot(rolling_beta, color=colors[i], linewidth=2)
         ax3.set_title(f'{pair_name.replace("_", " ").title()} - Rolling Beta')
+        ax3.set_ylabel("Beta to Benchmark")
         ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -337,6 +346,63 @@ def plot_systematic_performance_original(
             for p in selected_pairs
         ]
     )
+
+
+def save_spread_position_overlay(systematic_results: dict[str, Any], output_dir: Path | str) -> str | None:
+    """Persist spread z-score and position overlay for the best Sharpe pair.
+
+    Args:
+        systematic_results: Mapping of pair name to stitched backtest artifacts.
+        output_dir: Directory where the overlay figure should be saved.
+
+    Returns:
+        Path to saved figure as string, or None if insufficient data.
+    """
+
+    if not systematic_results:
+        return None
+
+    best_pair = None
+    best_sharpe = -np.inf
+    for pair, result in systematic_results.items():
+        metrics = result.get("performance_metrics", {})
+        sharpe = metrics.get("sharpe_ratio")
+        if sharpe is None or (isinstance(sharpe, float) and np.isnan(sharpe)):
+            continue
+        if sharpe > best_sharpe:
+            best_sharpe = sharpe
+            best_pair = pair
+
+    if not best_pair:
+        return None
+
+    spread = systematic_results[best_pair].get("spread")
+    positions = systematic_results[best_pair].get("positions")
+    if spread is None or positions is None or len(spread.dropna()) == 0:
+        return None
+
+    spread = spread.dropna()
+    z_denom = spread.std(ddof=0)
+    if np.isclose(z_denom, 0.0, atol=1e-12):
+        return None
+    z_scores = (spread - spread.mean()) / z_denom
+    pos_aligned = positions.reindex(z_scores.index).fillna(0)
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(z_scores.index, z_scores.values, label="Spread Z-score", color="steelblue")
+    ax.step(pos_aligned.index, pos_aligned.values, where="post", label="Position", color="darkorange")
+    ax.set_title(f"{best_pair.replace('_', ' ').title()} – Spread & Positions")
+    ax.set_ylabel("Z-score / Position")
+    ax.set_xlabel("Date")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    overlay_path = output_path / "spread_positions_overlay.png"
+    fig.tight_layout()
+    fig.savefig(overlay_path, dpi=300)
+    plt.close(fig)
+    return str(overlay_path)
 
 
 def plot_kalman_beta_evolution(
