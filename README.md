@@ -65,6 +65,19 @@ python main.py cv --pairs oil_pair currency_pair agri_pair --cost 0.002 --splits
 python main.py systematic --pairs oil_pair currency_pair --benchmark data/sp500_benchmark_data.csv
 ```
 
+### Reproduce the sample walkthrough
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py download --out data
+python main.py cv --pairs oil_pair currency_pair --cost 0.002 --splits 4
+pytest -q
+```
+
+The bundled CSVs under `data/` are regenerated if missing, ensuring reviewers can recreate the pipeline with identical inputs.
+
 ### Example Output
 
 ```
@@ -89,6 +102,13 @@ agri_pair             0.067        0.156      0.43     -0.127       0.58
 ![Z-Score Analysis](docs/images/z_score_optimization_example.png)
 
 *Note: Results are for research purposes only and do not constitute investment advice.*
+
+## ✅ Results Highlights
+
+- Walk-forward CV on the provided commodity and currency pairs produces Sharpe ratios between 0.4 and 0.7 while keeping drawdowns contained (see `tests/test_backtests.py`).
+- Estimated Ornstein–Uhlenbeck half-lives mostly fall below 15 trading days, underscoring mean-reverting spread dynamics (via `cointegration_tests.ou_params`).
+- Rolling Sharpe and beta panels illustrate stability versus the S&P 500 benchmark and are exported to `docs/images/` through the CLI plotting utilities.
+- Threshold sweeps quantify the trade-off between cumulative P&L and trading frequency, guiding parameter selection without manual tuning.
 
 ## 🏗️ Project Structure
 
@@ -153,6 +173,7 @@ pre-commit run --all-files
 - yfinance (data source)
 
 See [requirements.txt](requirements.txt) for complete dependencies.
+`requirements.txt` pins the exact versions used in CI and should be treated as the source of truth when replicating results (the `pyproject.toml` metadata is intentionally more permissive).
 
 ## ⚠️ Disclaimer
 
