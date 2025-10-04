@@ -22,6 +22,16 @@ dependencies = [
     "plotly",
 ]
 
+[project.scripts]
+cointegration-analysis = "cointegration_analysis.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.black]
 line-length = 100
 target-version = ["py312"]

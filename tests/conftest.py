@@ -18,8 +18,10 @@ from scipy import stats
 # Ensure project root (containing backtests.py, plotting.py, etc.) is importable
 _TESTS_DIR = os.path.dirname(__file__)
 _PROJECT_ROOT = os.path.abspath(os.path.join(_TESTS_DIR, ".."))
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+_SRC_ROOT = os.path.join(_PROJECT_ROOT, "src")
+for candidate in (_SRC_ROOT, _PROJECT_ROOT):
+    if candidate not in sys.path:
+        sys.path.insert(0, candidate)
 
 
 def pytest_addoption(parser):

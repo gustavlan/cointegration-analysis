@@ -50,19 +50,20 @@ source .venv/bin/activate  # On Windows: .venv\\Scripts\\activate
 
 # Install dependencies
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Basic Usage
 
 ```bash
 # Prepare data directory
-python main.py download --out data
+cointegration-analysis download --out data
 
 # Run cross-validation on pairs
-python main.py cv --pairs oil_pair currency_pair agri_pair --cost 0.002 --splits 5
+cointegration-analysis cv --pairs oil_pair currency_pair agri_pair --cost 0.002 --splits 5
 
 # Generate systematic backtest with plots
-python main.py systematic --pairs oil_pair currency_pair --benchmark data/sp500_benchmark_data.csv
+cointegration-analysis systematic --pairs oil_pair currency_pair --benchmark data/sp500_benchmark_data.csv
 ```
 
 ### Reproduce the sample walkthrough
@@ -71,8 +72,9 @@ python main.py systematic --pairs oil_pair currency_pair --benchmark data/sp500_
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python main.py download --out data
-python main.py cv --pairs oil_pair currency_pair --cost 0.002 --splits 4
+pip install -e .
+cointegration-analysis download --out data
+cointegration-analysis cv --pairs oil_pair currency_pair --cost 0.002 --splits 4
 pytest -q
 ```
 
@@ -114,19 +116,35 @@ agri_pair             0.067        0.156      0.43     -0.127       0.58
 
 ```
 pairs-cointegration-backtester/
-├── main.py                 # CLI entry point
-├── cointegration_tests.py  # Core statistical tests
-├── backtests.py           # Backtesting engine
-├── plotting.py            # Visualization utilities  
-├── threshold_optimization.py # Parameter tuning
-├── data_download.py       # Data management
-├── notebooks/             # Research notebooks
-│   └── analysis.ipynb     # Complete methodology walkthrough
-├── tests/                 # Test suite
-├── docs/                  # Documentation and figures
-├── data/                  # Sample datasets
-└── requirements.txt       # Dependencies
+├── src/
+│   └── cointegration_analysis/
+│       ├── __init__.py
+│       ├── cli.py                    # Primary CLI entry point
+│       ├── analytics/
+│       │   ├── __init__.py
+│       │   ├── backtesting.py        # Backtesting engine
+│       │   ├── cointegration.py      # Statistical test implementations
+│       │   ├── optimization.py       # Threshold search utilities
+│       │   └── plotting.py           # Visualization helpers
+│       ├── data/
+│       │   └── download.py           # Data ingestion utilities
+│       └── utils/
+│           └── silence_fd_output.py  # Context manager helpers
+├── backtests.py               # Legacy import shim → analytics.backtesting
+├── cointegration_tests.py     # Legacy import shim → analytics.cointegration
+├── plotting.py                # Legacy import shim → analytics.plotting
+├── threshold_optimization.py  # Legacy import shim → analytics.optimization
+├── data_download.py           # Legacy import shim → data.download
+├── main.py                    # Legacy CLI shim (calls cointegration_analysis.cli:main)
+├── notebooks/                 # Research notebooks
+├── tests/                     # Test suite
+├── docs/                      # Documentation and figures
+├── data/                      # Sample datasets
+└── requirements.txt           # Dependencies
 ```
+
+> The thin top-level shims keep existing notebook/test imports working, while
+> new development should target the `cointegration_analysis` package.
 
 ## 🔬 Research Notebook
 
