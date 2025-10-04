@@ -139,7 +139,17 @@ class TestCointegrationTests:
         result = engle_granger(df, "y", "x")
 
         # Check return structure
-        expected_keys = {"beta", "alpha", "eg_pvalue", "spread", "maxlag"}
+        expected_keys = {
+            "beta",
+            "alpha",
+            "eg_pvalue",
+            "spread",
+            "maxlag",
+            "used_lag",
+            "eg_stat",
+            "resid_lb_pvalue",
+            "beta_tstat",
+        }
         assert set(result.keys()) == expected_keys
 
         # Should detect cointegration
@@ -175,7 +185,17 @@ class TestCointegrationTests:
         assert abs(result_ab["eg_pvalue"] - result_ba["eg_pvalue"]) < 0.1
 
         # Check that result format is consistent
-        expected_keys = {"beta", "alpha", "eg_pvalue", "spread", "maxlag"}
+        expected_keys = {
+            "beta",
+            "alpha",
+            "eg_pvalue",
+            "spread",
+            "maxlag",
+            "used_lag",
+            "eg_stat",
+            "resid_lb_pvalue",
+            "beta_tstat",
+        }
         assert set(result_ab.keys()) == expected_keys
 
     def test_perfect_collinearity_case(self):

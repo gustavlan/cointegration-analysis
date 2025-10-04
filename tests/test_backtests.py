@@ -356,12 +356,12 @@ class TestStrategyReturns:
         assert set(result.keys()) == expected_keys
 
         # Check that positions are lagged (avoid look-ahead bias)
-        expected_lagged_pos = pd.Series([np.nan, 1, 0, -1, 0], index=dates)
+        expected_lagged_pos = pd.Series([0, 1, 0, -1, 0], index=dates)
         pd.testing.assert_series_equal(
             result["positions_used"], expected_lagged_pos, check_dtype=False
         )
 
-        # First return should be zero (no lagged position)
+        # First return should remain zero (no lagged position before start)
         assert result["strategy_returns"].iloc[0] == 0
 
     def test_calculate_strategy_returns_beta_neutral(self):
