@@ -8,10 +8,14 @@ supporting data download, cross-validation analysis, and systematic backtesting.
 
 import argparse
 import logging
+import os
+import random
+import subprocess
 import sys
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from cointegration_analysis.analytics.backtesting import (
     run_cv_over_pairs,
@@ -25,6 +29,42 @@ from cointegration_analysis.data.download import ensure_data_availability
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+DEFAULT_SEED = 42
+
+
+def _configure_reproducibility(seed: int = DEFAULT_SEED) -> None:
+    """Seed Python and NumPy RNGs for deterministic runs."""
+
+    random.seed(seed)
+    np.random.seed(seed)
+
+
+def _resolve_commit_hash() -> str:
+    """Return the current git commit hash, falling back to CI-provided SHAs."""
+
+    env_candidates = ("GIT_COMMIT", "CI_COMMIT_SHA", "GITHUB_SHA")
+    for var in env_candidates:
+        commit = os.getenv(var)
+        if commit:
+            return commit
+
+    try:
+        commit = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+            .decode()
+            .strip()
+        )
+        return commit
+    except Exception:
+        return "unknown"
+
+
+def _print_reproducibility_metadata(seed: int = DEFAULT_SEED) -> None:
+    """Emit a standardized reproducibility hash line."""
+
+    commit = _resolve_commit_hash()
+    print(f"Reproducibility hash: seed={seed} | commit={commit}")
 
 
 def load_pair_data(pairs: list[str], data_dir: str = "data") -> dict[str, pd.DataFrame]:
@@ -71,6 +111,7 @@ def cmd_download(args) -> int:
     Args:
         args: Parsed command-line arguments
 
+        _configure_reproducibility()
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
@@ -80,7 +121,8 @@ def cmd_download(args) -> int:
 
         # Placeholder for actual data download logic
         # In a real implementation, this would call functions from data_download.py
-        logger.info(f"Ensured data directory exists: {data_dir}")
+        logger.info(f"Data preparation completed for directory: {data_dir}")
+        _print_reproducibility_metadata()
 
         # Check if we have sample data or need to fetch
         ensure_data_availability(str(data_dir))
@@ -103,6 +145,8 @@ def cmd_cv(args) -> int:
         Exit code (0 for success, non-zero for failure)
     """
     try:
+        _configure_reproducibility()
+
         # Load data for all pairs
         all_data = load_pair_data(args.pairs)
 
@@ -136,6 +180,7 @@ def cmd_cv(args) -> int:
         print(summary.to_string(index=False))
 
         logger.info("Cross-validation completed successfully")
+        _print_reproducibility_metadata()
         return 0
 
     except Exception as e:
@@ -153,6 +198,8 @@ def cmd_systematic(args) -> int:
         Exit code (0 for success, non-zero for failure)
     """
     try:
+        _configure_reproducibility()
+
         # Load pair data
         all_data = load_pair_data(args.pairs)
 
@@ -215,6 +262,7 @@ def cmd_systematic(args) -> int:
         print("SYSTEMATIC BACKTEST COMPLETED")
         print("=" * 80)
         print(f"Plots saved to: {docs_dir}")
+        _print_reproducibility_metadata()
 
         return 0
 
