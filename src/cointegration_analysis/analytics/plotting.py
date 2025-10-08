@@ -351,7 +351,9 @@ def plot_systematic_performance_original(
     )
 
 
-def save_spread_position_overlay(systematic_results: dict[str, Any], output_dir: Path | str) -> str | None:
+def save_spread_position_overlay(
+    systematic_results: dict[str, Any], output_dir: Path | str
+) -> str | None:
     """Persist spread z-score and position overlay for the best Sharpe pair.
 
     Args:
@@ -395,7 +397,9 @@ def save_spread_position_overlay(systematic_results: dict[str, Any], output_dir:
     output_path.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(z_scores.index, z_scores.values, label="Spread Z-score", color="steelblue")
-    ax.step(pos_aligned.index, pos_aligned.values, where="post", label="Position", color="darkorange")
+    ax.step(
+        pos_aligned.index, pos_aligned.values, where="post", label="Position", color="darkorange"
+    )
     ax.set_title(f"{best_pair.replace('_', ' ').title()} – Spread & Positions")
     ax.set_ylabel("Z-score / Position")
     ax.set_xlabel("Date")

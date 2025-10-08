@@ -233,11 +233,10 @@ class TestPlotSystematicPerformance:
         def mock_rolling_func(returns, window=126):
             return pd.Series(np.random.randn(len(returns)) * 0.5, index=returns.index)
 
-        with patch(
-            "cointegration_analysis.analytics.plotting.plt.show"
-        ), patch(
-            "cointegration_analysis.analytics.plotting.plt.subplots"
-        ) as mock_subplots:
+        with (
+            patch("cointegration_analysis.analytics.plotting.plt.show"),
+            patch("cointegration_analysis.analytics.plotting.plt.subplots") as mock_subplots,
+        ):
             mock_fig = MagicMock()
             mock_axes = np.array([[MagicMock() for _ in range(3)] for _ in range(4)])
             mock_subplots.return_value = (mock_fig, mock_axes)
@@ -328,11 +327,10 @@ class TestPlotKalmanBetaEvolution:
         selected_pairs = ["nonexistent_pair"]
 
         # Should not crash even with missing data
-        with patch(
-            "cointegration_analysis.analytics.plotting.plt.show"
-        ), patch(
-            "cointegration_analysis.analytics.plotting.plt.subplots"
-        ) as mock_subplots:
+        with (
+            patch("cointegration_analysis.analytics.plotting.plt.show"),
+            patch("cointegration_analysis.analytics.plotting.plt.subplots") as mock_subplots,
+        ):
             mock_fig = MagicMock()
             mock_ax = MagicMock()
             mock_subplots.return_value = (mock_fig, [mock_ax])
@@ -384,10 +382,9 @@ class TestPlottingIntegration:
             def mock_rolling_func(returns, window=126):
                 return pd.Series(np.random.randn(len(returns)) * 0.5, index=returns.index)
 
-            with patch(
-                "cointegration_analysis.analytics.plotting.plt.show"
-            ), patch(
-                "cointegration_analysis.analytics.plotting.plt.subplots"
+            with (
+                patch("cointegration_analysis.analytics.plotting.plt.show"),
+                patch("cointegration_analysis.analytics.plotting.plt.subplots"),
             ):
                 result_df = plot_systematic_performance(
                     stitched_results,
@@ -416,11 +413,10 @@ class TestPlottingIntegration:
         assert len(opt_tables) == 0
 
         # Test plot_systematic_performance with empty stitched results
-        with patch(
-            "cointegration_analysis.analytics.plotting.plt.show"
-        ), patch(
-            "cointegration_analysis.analytics.plotting.plt.subplots"
-        ) as mock_subplots:
+        with (
+            patch("cointegration_analysis.analytics.plotting.plt.show"),
+            patch("cointegration_analysis.analytics.plotting.plt.subplots") as mock_subplots,
+        ):
             mock_fig = MagicMock()
             mock_axes = np.array([[MagicMock() for _ in range(3)] for _ in range(4)])
             mock_subplots.return_value = (mock_fig, mock_axes)
@@ -470,10 +466,9 @@ class TestPlottingEdgeCases:
             "detailed_results": {"minimal_pair": {"adaptive_betas": single_point_series}}
         }
 
-        with patch(
-            "cointegration_analysis.analytics.plotting.plt.show"
-        ), patch(
-            "cointegration_analysis.analytics.plotting.plt.subplots"
+        with (
+            patch("cointegration_analysis.analytics.plotting.plt.show"),
+            patch("cointegration_analysis.analytics.plotting.plt.subplots"),
         ):
             # Should handle minimal data gracefully
             result = plot_kalman_beta_evolution(kalman_analysis, ["minimal_pair"])
