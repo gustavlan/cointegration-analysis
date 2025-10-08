@@ -14,7 +14,7 @@ Pairs trading research project implementing Engle–Granger, Johansen, ECM diagn
 | Agriculture (Corn vs Soybean) | ~7% | 0.43 | −12.7% | 68 | Higher volatility rewards wider bands and tighter risk limits |
 | Currency (AUD/USD vs CAD/USD) | ~3% | 0.39 | −10.3% | 54 | Diversifier that preserves capital when recalibrated adaptively |
 
-Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py`) using 20 bps round-trip costs and the bundled daily CSV data. Figures shown below are exported to `docs/images/`.
+Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data. Figures shown below are exported to `docs/images/`.
 Limitations: Regime shifts, execution slippage, and data vendor revisions can dilute these metrics if the spread isn't recalibrated routinely.
 
 ## 🎯 Highlights
