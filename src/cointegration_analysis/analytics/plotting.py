@@ -250,7 +250,7 @@ def plot_systematic_performance_original(
         # Robustly retrieve subplot axis across different mocked shapes
         def _choose(obj):
             # If obj is an array/list of mocks, pick the first with plot attribute
-            if isinstance(obj, (list, np.ndarray)):
+            if isinstance(obj, list | np.ndarray):
                 for el in obj:
                     if hasattr(el, "plot"):
                         return el
