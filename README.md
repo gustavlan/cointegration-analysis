@@ -47,6 +47,7 @@ Metrics come from the walk-forward cross-validation pipeline (`tests/test_backte
 
 ### Backtesting Framework
 - **Walk-Forward CV** with expanding windows, stitched equity curves, and fold-aware rolling stats.
+- **No Look-Ahead Leakage**: All folds use purged/embargoed CV and prevent future data access; see `tests/test_backtests.py::test_no_lookahead`.
 - **Threshold Sweeps** to automate z-score selection under varying transaction costs.
 - **Risk Controls** including max drawdown tracking, NA padding between folds, and beta neutrality checks.
 - **Failure Modes Explored**: Structural breaks, OU half-life shocks, hedge ratio drift, and cost sensitivity.
@@ -67,17 +68,7 @@ flowchart LR
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/gustavlan/cointegration-analysis.git
-cd cointegration-analysis
-
-# Create virtual environment
-python3.12 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -e .
+pip install -e . && cointegration-analysis download && cointegration-analysis cv --pairs oil_pair --splits 4 && cointegration-analysis systematic --pairs oil_pair
 ```
 
 ### Basic Usage
