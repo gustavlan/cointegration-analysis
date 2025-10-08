@@ -6,8 +6,6 @@
 
 Pairs trading research project implementing Engle–Granger, Johansen, ECM diagnostics, structural break detection, and systematic walk-forward backtesting.
 
-> **Why recruiters care:** this portfolio piece demonstrates full-stack quant research delivery—robust statistical testing, disciplined engineering, and automated reporting ready for hedge fund workflows.
-
 ## ⚡ Executive Snapshot
 
 | Pair | Ann. Return | Sharpe | Max Drawdown | Trades | Key takeaway |
@@ -24,7 +22,7 @@ Metrics come from the walk-forward cross-validation pipeline (`tests/test_backte
 - **Comprehensive Cointegration Suite**: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
 - **Risk & Performance Instrumentation**: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
 - **Operational Discipline**: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
-- **Recruiter-Friendly Notebook**: Story-driven walkthrough highlighting design decisions, diagnostics, and takeaways.
+- **Notebook**: Story-driven walkthrough highlighting design decisions, diagnostics, and takeaways.
 
 ## 🗺️ Data & Scope
 
@@ -221,12 +219,6 @@ pre-commit run --all-files
 - yfinance (data source)
 
 See [requirements.txt](requirements.txt) for complete dependencies. The file pins exact versions used in CI and should be treated as the source of truth when replicating results (the `pyproject.toml` metadata is intentionally more permissive).
-
-## 💬 Interview Talking Points
-
-- **Signal validation under regime shifts**: Structural break tests and Kalman-filtered betas inform dynamic risk controls.
-- **Cross-validation design**: Expanding windows, NaN padding between folds, and prevention of look-ahead bias.
-- **Execution considerations**: Path to extend into intraday data, richer transaction cost models, and portfolio scaling across multiple pairs.
 
 ## 🛠️ Roadmap
 
