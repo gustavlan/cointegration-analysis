@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial project setup and refactoring for public release
 
-## [0.1.0] - 2025-08-25
+## [0.1.0] - 2025-10-08
 
 ### Added
 - Core cointegration testing framework with ADF, KPSS, Engle-Granger, and Zivot-Andrews tests
@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Research notebook demonstrating complete methodology
 - Sample plots and performance visualizations
 - API documentation for core modules
+- README repositioned to emphasize CLI-first workflows and document purged CV safeguards
+- Added release asset bundle instructions for `docs/images` figures
 
 ### Infrastructure
 - pyproject.toml configuration for modern Python packaging
@@ -55,5 +57,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable data directory structure
 - CSV-based data storage with DatetimeIndex parsing
 
-[Unreleased]: https://github.com/gustavlan/pairs-cointegration-backtester/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/gustavlan/pairs-cointegration-backtester/releases/tag/v0.1.0
+[Unreleased]: https://github.com/gustavlan/cointegration-analysis/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/gustavlan/cointegration-analysis/releases/tag/v0.1.0
