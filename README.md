@@ -95,7 +95,7 @@ agri_pair             0.067        0.156      0.43     -0.127       0.58
 ## 📈 Sample Results
 
 ### Equity Curves
-![Equity Curves](docs/images/equity_curves_example.png)
+![Equity Curves](docs/images/equity_curves_multiple.png)
 
 ### Rolling Performance Metrics
 ![Rolling Sharpe](docs/images/rolling_sharpe_example.png)
