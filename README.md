@@ -66,6 +66,19 @@ flowchart LR
 
 ## 🚀 Quick Start
 
+### Library API
+
+```python
+from cointegration_analysis.analytics import cointegration, backtesting
+
+# Run Engle–Granger, Johansen, and ECM diagnostics on target spreads
+results = cointegration.run_pipeline(pairs=["oil_pair", "currency_pair"])
+
+# Stitch walk-forward folds into a systematic equity curve
+engine = backtesting.WalkForwardEngine(pairs=["oil_pair", "currency_pair"], cost=0.002)
+summary = engine.run()
+```
+
 ### Installation
 
 ```bash
