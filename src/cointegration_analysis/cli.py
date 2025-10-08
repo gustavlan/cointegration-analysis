@@ -14,8 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from cointegration_analysis.analytics.backtesting import (
     run_cv_over_pairs,
