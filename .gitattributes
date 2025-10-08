@@ -1,0 +1,5 @@
+# Treat all notebooks as documentation so they don't count toward language stats
+notebooks/** linguist-documentation
+
+# Optionally, also exclude top-level notebooks if any
+*.ipynb linguist-documentation
