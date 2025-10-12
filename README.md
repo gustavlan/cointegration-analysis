@@ -130,10 +130,6 @@ agri_pair             0.067        0.156      0.43     -0.127       0.58
 ![Equity Curves](docs/images/equity_curves_multiple.png)
 *Oil’s equity curve trends upward with shallow drawdowns; agriculture’s curve highlights regime-sensitive performance, and currency acts as low-volatility ballast.*
 
-### Rolling Performance Metrics
-![Rolling Sharpe](docs/images/rolling_sharpe_example.png)
-*Rolling Sharpe and drawdown panels surface fold-to-fold stability and flag when recalibration is necessary.*
-
 ### Z-Score Threshold Analysis
 ![Z-Score Analysis](docs/images/z_score_optimization_example.png)
 *Z-score sweeps expose the trade-off between trade frequency and normalized PnL, guiding automated threshold selection.*
