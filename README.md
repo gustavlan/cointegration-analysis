@@ -10,11 +10,11 @@ Pairs trading research project implementing Engle–Granger, Johansen, ECM diagn
 
 | Pair | Ann. Return | Sharpe | Max Drawdown | Trades | Key takeaway |
 |------|-------------|--------|--------------|--------|--------------|
-| Oil (WTI vs Brent) | ~9% | 0.72 | −5.8% | 120 | Robust mean reversion with shallow drawdowns and neutral beta |
-| Agriculture (Corn vs Soybean) | ~7% | 0.43 | −12.7% | 68 | Higher volatility rewards wider bands and tighter risk limits |
-| Currency (AUD/USD vs CAD/USD) | ~3% | 0.39 | −10.3% | 54 | Diversifier that preserves capital when recalibrated adaptively |
+| Oil (WTI vs Brent) | 8.9% | 0.72 | −5.8% | 120 | Robust mean reversion with shallow drawdowns and neutral beta |
+| Agriculture (Corn vs Soybean) | 6.7% | 0.43 | −12.7% | 68 | Higher volatility rewards wider bands and tighter risk limits |
+| Currency (AUD/USD vs CAD/USD) | 3.4% | 0.39 | −10.3% | 54 | Diversifier that preserves capital when recalibrated adaptively |
 
-Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data. Figures shown below are exported to `docs/images/`.
+Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data (can also be downloaded through yfinance). Figures shown below are exported to `docs/images/`.
 Limitations: Regime shifts, execution slippage, and data vendor revisions can dilute these metrics if the spread isn't recalibrated routinely.
 
 ## 🎯 Highlights
@@ -110,7 +110,7 @@ cointegration-analysis cv --pairs oil_pair currency_pair --cost 0.002 --splits 4
 pytest -q
 ```
 
-Expect the end-to-end run (download → CV → pytest) to finish in under 10 minutes on a modern laptop. Bundled CSVs are regenerated automatically if missing, guaranteeing reproducibility.
+Expect the end-to-end run (download → CV → pytest) to finish in under 10 minutes on a modern laptop. Bundled CSVs are regenerated automatically if missing.
 
 ### Example Output
 
@@ -118,17 +118,17 @@ Expect the end-to-end run (download → CV → pytest) to finish in under 10 min
 ================================================================================
 CROSS-VALIDATION RESULTS  
 ================================================================================
-    Pair         Mean Return    Volatility    Sharpe    Max DD    Win Rate
-oil_pair              0.089        0.124      0.72     -0.058       0.61
-currency_pair         0.034        0.087      0.39     -0.103       0.54  
-agri_pair             0.067        0.156      0.43     -0.127       0.58
+    Pair         Mean Return    Volatility    Sharpe    Max drawdown    Win Rate
+oil_pair              0.089        0.124      0.72     -0.058           0.61
+currency_pair         0.034        0.087      0.39     -0.103           0.54  
+agri_pair             0.067        0.156      0.43     -0.127           0.58
 ```
 
 ## 📈 Sample Results
 
 ### Equity Curves
 ![Equity Curves](docs/images/equity_curves_multiple.png)
-*Oil’s equity curve trends upward with shallow drawdowns; agriculture’s curve highlights regime-sensitive performance, and currency acts as low-volatility ballast.*
+*Oil’s equity curve trends upward with shallow drawdowns; agriculture’s curve highlights regime-sensitive performance, and currency acts as a potential diversifier.*
 
 ### Z-Score Threshold Analysis
 ![Z-Score Analysis](docs/images/z_score_optimization_example.png)
@@ -167,7 +167,7 @@ cointegration-analysis/
 ├── tests/                     # Test suite
 ├── data/                      # Sample datasets (auto-regenerated)
 ├── pyproject.toml             # Project metadata
-├── requirements.txt           # Pinned dependencies for reproduction
+├── requirements.txt           # Dependencies
 └── README.md                  # Project overview and usage
 ```
 
@@ -178,10 +178,10 @@ cointegration-analysis/
 Explore the complete methodology in [notebooks/analysis.ipynb](notebooks/analysis.ipynb), which includes:
 
 - Theoretical background on cointegration and mean reversion
-- Step-by-step implementation with clean-room explanations
+- Step-by-step implementation with explanations
 - Parameter sensitivity analysis and z-score sweeps
 - Detailed performance attribution, including Kalman beta panels
-- Robustness checks, limitations, and interview-ready talking points
+- Robustness checks, and limitations discussion
 
 ## 🧪 Testing & Quality Gates
 
@@ -221,12 +221,12 @@ pre-commit run --all-files
 
 See [requirements.txt](requirements.txt) for complete dependencies. The file pins exact versions used in CI and should be treated as the source of truth when replicating results (the `pyproject.toml` metadata is intentionally more permissive).
 
-## 🛠️ Roadmap
+## 🛠️ Roadmap of Future Feature Additions
 
 1. Integrate a configurable slippage model tied to realized bid/ask spreads.
 2. Add Bayesian updating to threshold selection for adaptive trade sizing.
 3. Expand the CLI to export PDF tear sheets combining equity, risk, and attribution panels.
-4. Layer in order-book-aware execution simulators for high-frequency scenarios.
+4. Layer in order book aware execution simulators for high frequency scenarios.
 
 ## ⚠️ Disclaimer
 
