@@ -19,9 +19,9 @@ Limitations: Regime shifts, execution slippage, and data vendor revisions can di
 
 - **Research-to-Production Pipeline**: Data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
 - **Comprehensive Cointegration Suite**: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
-- **Risk & Performance Instrumentation**: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
+- **Risk & Performance stats**: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
 - **Operational Discipline**: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
-- **Notebook**: Story-driven walkthrough highlighting design decisions, diagnostics, and takeaways.
+- **Notebook**: Story driven walkthrough highlighting design decisions, diagnostics, and takeaways.
 
 ## Data & Scope
 
