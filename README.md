@@ -6,7 +6,7 @@
 
 Pairs trading research project implementing Engle–Granger, Johansen, ECM diagnostics, structural break detection, and systematic walk-forward backtesting.
 
-## ⚡ Executive Snapshot
+## Project Brief
 
 | Pair | Ann. Return | Sharpe | Max Drawdown | Trades | Key takeaway |
 |------|-------------|--------|--------------|--------|--------------|
@@ -17,15 +17,13 @@ Pairs trading research project implementing Engle–Granger, Johansen, ECM diagn
 Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data (can also be downloaded through yfinance). Figures shown below are exported to `docs/images/`.
 Limitations: Regime shifts, execution slippage, and data vendor revisions can dilute these metrics if the spread isn't recalibrated routinely.
 
-## 🎯 Highlights
-
 - **Research-to-Production Pipeline**: Data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
 - **Comprehensive Cointegration Suite**: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
 - **Risk & Performance Instrumentation**: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
 - **Operational Discipline**: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
 - **Notebook**: Story-driven walkthrough highlighting design decisions, diagnostics, and takeaways.
 
-## 🗺️ Data & Scope
+## Data & Scope
 
 - **Universe**: Commodities, FX, equity indices, and sector ETFs curated into economic pairings (see `ASSET_GROUPS` in `notebooks/analysis.ipynb`).
 - **Sampling**: Daily closes sourced via `yfinance`; reproducible through `cointegration-analysis download`.
@@ -33,7 +31,7 @@ Limitations: Regime shifts, execution slippage, and data vendor revisions can di
 - **Assumptions**: 20 bps round-trip transaction cost, overnight holding period, unit exposure per trade.
 - **Benchmarking**: Rolling beta computed versus S&P 500 excess returns from `data/sp500_benchmark_data.csv`.
 
-## 📊 Methodology
+## Methodology
 
 ### Cointegration Testing
 - **Engle–Granger** for bivariate spreads with directional sensitivity checks.
@@ -64,7 +62,7 @@ flowchart LR
     E --> F[Plot export & reporting]
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Library API
 
@@ -124,7 +122,7 @@ currency_pair         0.034        0.087      0.39     -0.103           0.54
 agri_pair             0.067        0.156      0.43     -0.127           0.58
 ```
 
-## 📈 Sample Results
+## Sample Results
 
 ### Equity Curves
 ![Equity Curves](docs/images/equity_curves_multiple.png)
@@ -136,7 +134,7 @@ agri_pair             0.067        0.156      0.43     -0.127           0.58
 
 *Note: Results are for research purposes only and do not constitute investment advice.*
 
-## ✅ Results Highlights
+## Results Highlights
 
 - Sharpe ratios between 0.4 and 0.7 with contained drawdowns across walk-forward folds (validated in `tests/test_backtests.py`).
 - Ornstein–Uhlenbeck half-lives mostly below 15 trading days, underscoring actionable mean reversion.
@@ -144,7 +142,7 @@ agri_pair             0.067        0.156      0.43     -0.127           0.58
 - Threshold sweeps quantify the PnL vs turnover trade-off, enabling automated parameter selection without manual tuning.
 - Continuous monitoring with Zivot–Andrews breaks and Kalman-filtered hedge ratios demonstrates proactive regime management.
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 cointegration-analysis/
@@ -173,7 +171,7 @@ cointegration-analysis/
 
 > Legacy top-level module names have been removed. Update any custom notebooks/scripts to import from `cointegration_analysis` directly.
 
-## 🔬 Research Notebook
+## Research Notebook
 
 Explore the complete methodology in [notebooks/analysis.ipynb](notebooks/analysis.ipynb), which includes:
 
@@ -183,7 +181,7 @@ Explore the complete methodology in [notebooks/analysis.ipynb](notebooks/analysi
 - Detailed performance attribution, including Kalman beta panels
 - Robustness checks, and limitations discussion
 
-## 🧪 Testing & Quality Gates
+## Testing & Quality Gates
 
 ```bash
 # Run full test suite
@@ -199,7 +197,7 @@ black .
 
 GitHub Actions runs pytest, coverage, Ruff, and Black on every push; coverage artifacts are stored for quick review during code submissions.
 
-## 🔄 Development Workflow
+## Development Workflow
 
 ```bash
 # Install pre-commit hooks
@@ -210,7 +208,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-## 📋 Requirements
+## Requirements
 
 - Python 3.12+
 - pandas, numpy, scipy
@@ -221,16 +219,12 @@ pre-commit run --all-files
 
 See [requirements.txt](requirements.txt) for complete dependencies. The file pins exact versions used in CI and should be treated as the source of truth when replicating results (the `pyproject.toml` metadata is intentionally more permissive).
 
-## 🛠️ Roadmap of Future Feature Additions
+## Roadmap of Future Feature Additions
 
 1. Integrate a configurable slippage model tied to realized bid/ask spreads.
 2. Add Bayesian updating to threshold selection for adaptive trade sizing.
 3. Expand the CLI to export PDF tear sheets combining equity, risk, and attribution panels.
 4. Layer in order book aware execution simulators for high frequency scenarios.
-
-## ⚠️ Disclaimer
-
-This project is for educational and research purposes only. Past performance does not guarantee future results. Trading involves substantial risk and may not be suitable for all investors.
 
 ## 📄 License
 
