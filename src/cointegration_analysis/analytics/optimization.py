@@ -62,36 +62,7 @@ def get_best_z_threshold(pair_name: str, data: pd.DataFrame, z_range: list[float
 
     logger.info(f"Using Z-threshold {default_z} for {pair_name} (placeholder implementation)")
 
-    # TODO: Implement actual parameter sweep using backtest_spread
-    # best_z, best_sharpe = optimize_z_threshold(data, z_range)
-    # return best_z
-
     return default_z
-
-
-def optimize_z_threshold(
-    data: pd.DataFrame, z_range: list[float], cost: float = 0.002
-) -> tuple[float, float]:
-    """Optimize Z-score threshold using parameter sweep.
-
-    Args:
-        data: DataFrame with asset price columns
-        z_range: List of Z-score values to test
-        cost: Transaction cost per trade
-
-    Returns:
-        Tuple of (best_z, best_sharpe_ratio)
-
-    Note:
-        This is a placeholder for the full optimization implementation
-    """
-    # Placeholder - would implement full parameter sweep here
-    best_z = 2.0
-    best_sharpe = 0.5
-
-    logger.info(f"Optimization placeholder: best Z={best_z}, Sharpe={best_sharpe}")
-
-    return best_z, best_sharpe
 
 
 def backtest_spread(e, mu, sigma, beta, y, x, Z, cost=0.0, normalize=False):
