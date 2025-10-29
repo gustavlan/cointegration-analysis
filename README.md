@@ -17,11 +17,11 @@ Pairs trading research project implementing Engle–Granger, Johansen, ECM diagn
 Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data (can also be downloaded through yfinance). Figures shown below are exported to `docs/images/`.
 Limitations: Regime shifts, execution slippage, and data vendor revisions can dilute these metrics if the spread isn't recalibrated routinely.
 
-- **Research-to-Production Pipeline**: Data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
-- **Comprehensive Cointegration Suite**: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
-- **Risk & Performance stats**: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
-- **Operational Discipline**: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
-- **Notebook**: Story driven walkthrough highlighting design decisions, diagnostics, and takeaways.
+- Research to Production Pipeline: Data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
+- Comprehensive Cointegration Suite: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
+- Risk & Performance stats: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
+- Operational Discipline: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
+- *Notebook: Story driven walkthrough highlighting design decisions, diagnostics, and takeaways.
 
 ## Data & Scope
 
@@ -62,28 +62,13 @@ flowchart LR
     E --> F[Plot export & reporting]
 ```
 
-## Quick Start
-
-### Library API
-
-```python
-from cointegration_analysis.analytics import cointegration, backtesting
-
-# Run Engle–Granger, Johansen, and ECM diagnostics on target spreads
-results = cointegration.run_pipeline(pairs=["oil_pair", "currency_pair"])
-
-# Stitch walk-forward folds into a systematic equity curve
-engine = backtesting.WalkForwardEngine(pairs=["oil_pair", "currency_pair"], cost=0.002)
-summary = engine.run()
-```
-
 ### Installation
 
 ```bash
 pip install -e . && cointegration-analysis download && cointegration-analysis cv --pairs oil_pair --splits 4 && cointegration-analysis systematic --pairs oil_pair
 ```
 
-### Basic Usage
+### Usage
 
 ```bash
 # Prepare or refresh data
@@ -169,33 +154,13 @@ cointegration-analysis/
 └── README.md                  # Project overview and usage
 ```
 
-> Legacy top-level module names have been removed. Update any custom notebooks/scripts to import from `cointegration_analysis` directly.
-
 ## Research Notebook
 
-Explore the complete methodology in [notebooks/analysis.ipynb](notebooks/analysis.ipynb), which includes:
-
-- Theoretical background on cointegration and mean reversion
-- Step-by-step implementation with explanations
-- Parameter sensitivity analysis and z-score sweeps
-- Detailed performance attribution, including Kalman beta panels
-- Robustness checks, and limitations discussion
+Explore the complete methodology in [notebooks/analysis.ipynb](notebooks/analysis.ipynb), which includes: Theoretical background on cointegration and mean reversion. Step-by-step implementation with explanations. Parameter sensitivity analysis and z-score sweeps. Detailed performance attribution, including Kalman beta panels. Robustness checks, and limitations discussion.
 
 ## Testing & Quality Gates
 
-```bash
-# Run full test suite
-pytest -v
-
-# With coverage report  
-pytest --cov=. --cov-report=html
-
-# Lint and format
-ruff check .
-black .
-```
-
-GitHub Actions runs pytest, coverage, Ruff, and Black on every push; coverage artifacts are stored for quick review during code submissions.
+GitHub Actions runs pytest, coverage, Ruff, and Black on every push, coverage artifacts are stored for quick review during code submissions.
 
 ## Development Workflow
 
