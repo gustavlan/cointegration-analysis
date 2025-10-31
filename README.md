@@ -25,11 +25,7 @@ Limitations: Regime shifts, execution slippage, and data vendor revisions can di
 
 ## Data & Scope
 
-- **Universe**: Commodities, FX, equity indices, and sector ETFs curated into economic pairings (see `ASSET_GROUPS` in `notebooks/analysis.ipynb`).
-- **Sampling**: Daily closes sourced via `yfinance`; reproducible through `cointegration-analysis download`.
-- **Horizon**: Full-sample CSVs ship in `data/`; scripts regenerate the latest history when files are missing.
-- **Assumptions**: 20 bps round-trip transaction cost, overnight holding period, unit exposure per trade.
-- **Benchmarking**: Rolling beta computed versus S&P 500 excess returns from `data/sp500_benchmark_data.csv`.
+Assets used includes commodities, FX, equity indices, and sector ETFs curated into economic pairings (see `ASSET_GROUPS` in `notebooks/analysis.ipynb`).  Daily closes sourced via `yfinance`; reproducible through `cointegration-analysis download`. Full-sample CSVs ship in `data/`; scripts regenerate the latest history when files are missing. Uses a naive 20 bps round-trip transaction cost, overnight holding period, unit exposure per trade. Benchmarked against rolling beta computed versus S&P 500 excess returns from `data/sp500_benchmark_data.csv`.
 
 ## Methodology
 
@@ -40,9 +36,7 @@ Limitations: Regime shifts, execution slippage, and data vendor revisions can di
 - **Johansen** analysis for triple-asset spreads (documented failure cases included).
 
 ### Error Correction & Regime Monitoring
-- **Vector Error Correction (VECM)** and OU parameterization for mean-reversion speed.
-- **Time-slice ECM** diagnostics to spot parameter drift across regimes.
-- **Kalman-filtered betas** to monitor hedge ratio uncertainty and trigger guardrails.
+Vector Error Correction (VECM) and OU parameterization for mean-reversion speed. Time-slice ECM diagnostics to spot parameter drift across regimes. Kalman-filtered betas to monitor hedge ratio uncertainty and trigger guardrails.
 
 ### Backtesting Framework
 - **Walk-Forward CV** with expanding windows, stitched equity curves, and fold-aware rolling stats.
