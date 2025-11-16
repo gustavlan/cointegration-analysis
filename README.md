@@ -17,7 +17,7 @@ Pairs trading research project implementing Engle–Granger, Johansen, ECM diagn
 Metrics come from the walk-forward cross-validation pipeline (`tests/test_backtests.py::test_walkforward_cv_pipeline`) using 20 bps round-trip costs and the bundled daily CSV data (can also be downloaded through yfinance). Figures shown below are exported to `docs/images/`.
 Limitations: Regime shifts, execution slippage, and data vendor revisions can dilute these metrics if the spread isn't recalibrated routinely.
 
-- Research to Production Pipeline: Data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
+- Research to Production Pipeline: data download → statistical validation → threshold optimization → walk-forward backtest → automated reporting.
 - Comprehensive Cointegration Suite: ADF, KPSS, Engle–Granger, ECM, Zivot–Andrews, and Johansen diagnostics with guardrails for false positives.
 - Risk & Performance stats: Rolling Sharpe, drawdown, beta, OU half-life, and structural break monitoring.
 - Operational Discipline: CLI, pytest suite, Ruff linting, Black formatting, and GitHub Actions CI.
@@ -39,11 +39,7 @@ Assets used includes commodities, FX, equity indices, and sector ETFs curated in
 Vector Error Correction (VECM) and OU parameterization for mean-reversion speed. Time-slice ECM diagnostics to spot parameter drift across regimes. Kalman-filtered betas to monitor hedge ratio uncertainty and trigger guardrails.
 
 ### Backtesting Framework
-- **Walk-Forward CV** with expanding windows, stitched equity curves, and fold-aware rolling stats.
-- **No Look-Ahead Leakage**: All folds use purged/embargoed CV and prevent future data access; see `tests/test_backtests.py::test_no_lookahead`.
-- **Threshold Sweeps** to automate z-score selection under varying transaction costs.
-- **Risk Controls** including max drawdown tracking, NA padding between folds, and beta neutrality checks.
-- **Failure Modes Explored**: Structural breaks, OU half-life shocks, hedge ratio drift, and cost sensitivity.
+Walk-Forward CV with expanding windows, stitched equity curves, and fold-aware rolling stats. No look ahead leakage, all folds use purged/embargoed CV and prevent future data access, see `tests/test_backtests.py::test_no_lookahead`. Threshold sweeps to automate z-score selection under varying transaction costs. Risk controls including max drawdown tracking, NA padding between folds, and beta neutrality checks. Failure modes explored structural breaks, OU half-life shocks, hedge ratio drift, and cost sensitivity.
 
 ### Research Workflow at a Glance
 
@@ -111,15 +107,10 @@ agri_pair             0.067        0.156      0.43     -0.127           0.58
 ![Z-Score Analysis](docs/images/z_score_optimization_example.png)
 *Z-score sweeps expose the trade-off between trade frequency and normalized PnL, guiding automated threshold selection.*
 
-*Note: Results are for research purposes only and do not constitute investment advice.*
 
 ## Results Highlights
 
-- Sharpe ratios between 0.4 and 0.7 with contained drawdowns across walk-forward folds (validated in `tests/test_backtests.py`).
-- Ornstein–Uhlenbeck half-lives mostly below 15 trading days, underscoring actionable mean reversion.
-- Rolling beta remains near zero, confirming market neutrality against S&P 500 excess returns.
-- Threshold sweeps quantify the PnL vs turnover trade-off, enabling automated parameter selection without manual tuning.
-- Continuous monitoring with Zivot–Andrews breaks and Kalman-filtered hedge ratios demonstrates proactive regime management.
+Sharpe ratios between 0.4 and 0.7 with contained drawdowns across walk-forward folds (validated in `tests/test_backtests.py`). Ornstein–Uhlenbeck half-lives mostly below 15 trading days, underscoring actionable mean reversion. Rolling beta remains near zero, confirming market neutrality against S&P 500 excess returns. Threshold sweeps quantify the PnL vs turnover trade-off, enabling automated parameter selection without manual tuning. Continuous monitoring with Zivot–Andrews breaks and Kalman filtered hedge ratios demonstrates proactive regime management.
 
 ## Project Structure
 
