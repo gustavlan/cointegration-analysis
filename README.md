@@ -176,11 +176,11 @@ See [requirements.txt](requirements.txt) for complete dependencies. The file pin
 3. Expand the CLI to export PDF tear sheets combining equity, risk, and attribution panels.
 4. Layer in order book aware execution simulators for high frequency scenarios.
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📧 Contact
+## Contact
 
 Gustav Lantz - [@gustavlan](https://github.com/gustavlan)
 
