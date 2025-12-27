@@ -169,7 +169,7 @@ pre-commit run --all-files
 
 See [requirements.txt](requirements.txt) for complete dependencies. The file pins exact versions used in CI and should be treated as the source of truth when replicating results (the `pyproject.toml` metadata is intentionally more permissive).
 
-## Roadmap of Future Feature Additions
+## Potential future enhancements
 
 1. Integrate a configurable slippage model tied to realized bid/ask spreads.
 2. Add Bayesian updating to threshold selection for adaptive trade sizing.
@@ -180,8 +180,3 @@ See [requirements.txt](requirements.txt) for complete dependencies. The file pin
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contact
-
-Gustav Lantz - [@gustavlan](https://github.com/gustavlan)
-
-Project Link: [https://github.com/gustavlan/cointegration-analysis](https://github.com/gustavlan/cointegration-analysis)
