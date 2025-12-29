@@ -24,45 +24,7 @@ except Exception:  # pragma: no cover
     pass
 
 
-def get_best_z_threshold(pair_name: str, data: pd.DataFrame, z_range: list[float] = None) -> float:
-    """Get the optimal Z-score threshold for a trading pair.
 
-    This is a placeholder function that would normally run a parameter sweep
-    to find the optimal Z-score threshold. For now, it returns a reasonable
-    default based on the pair type.
-
-    Args:
-        pair_name: Name of the trading pair
-        data: DataFrame containing price data for the pair
-        z_range: Optional list of Z-score values to test
-
-    Returns:
-        Optimal Z-score threshold
-
-    Example:
-        >>> data = pd.DataFrame({'Asset1': [100, 101, 99], 'Asset2': [200, 202, 198]})
-        >>> z_opt = get_best_z_threshold('test_pair', data)
-        >>> print(f"Optimal Z threshold: {z_opt}")
-    """
-    if z_range is None:
-        z_range = [1.5, 2.0, 2.5, 3.0]
-
-    # Placeholder implementation - in reality this would run a comprehensive
-    # parameter sweep using the backtest_spread function
-
-    # Default thresholds based on pair characteristics
-    if "oil" in pair_name.lower():
-        default_z = 2.0  # Oil pairs tend to be well-behaved
-    elif "currency" in pair_name.lower():
-        default_z = 2.5  # Currency pairs may need wider bands
-    elif "agri" in pair_name.lower():
-        default_z = 2.2  # Agricultural commodities
-    else:
-        default_z = 2.0  # General default
-
-    logger.info(f"Using Z-threshold {default_z} for {pair_name} (placeholder implementation)")
-
-    return default_z
 
 
 def backtest_spread(e, mu, sigma, beta, y, x, Z, cost=0.0, normalize=False):
