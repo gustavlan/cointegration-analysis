@@ -54,9 +54,7 @@ def calculate_tear_sheet_metrics(
     downside_returns = returns[returns < 0]
     downside_std = downside_returns.std() * np.sqrt(periods_per_year)
     sortino_ratio = (
-        (excess_returns.mean() * periods_per_year) / downside_std
-        if downside_std != 0
-        else np.nan
+        (excess_returns.mean() * periods_per_year) / downside_std if downside_std != 0 else np.nan
     )
 
     # Max Drawdown

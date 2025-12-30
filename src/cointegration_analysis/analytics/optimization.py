@@ -24,9 +24,6 @@ except Exception:  # pragma: no cover
     pass
 
 
-
-
-
 def backtest_spread(e, mu, sigma, beta, y, x, Z, cost=0.0, normalize=False):
     """Backtest spread trading strategy with specified threshold and cost parameters.
 

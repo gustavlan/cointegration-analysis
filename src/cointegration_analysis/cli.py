@@ -22,7 +22,6 @@ from cointegration_analysis.analytics.backtesting import (
     run_systematic_backtest,
     summarize_cv,
 )
-from cointegration_analysis.analytics.optimization import get_best_z_threshold
 from cointegration_analysis.analytics.plotting import plot_systematic_performance
 from cointegration_analysis.data.download import ensure_data_availability
 
@@ -150,16 +149,11 @@ def cmd_cv(args) -> int:
         # Load data for all pairs
         all_data = load_pair_data(args.pairs)
 
-        # Get optimal Z thresholds (placeholder implementation)
-        best_z = {}
+        # Use default Z threshold of 2.0 for all pairs
+        # For production use, run optimize_thresholds() to find optimal values
+        best_z = {pair: 2.0 for pair in args.pairs}
         for pair in args.pairs:
-            try:
-                z_value = get_best_z_threshold(pair, all_data[pair])
-                best_z[pair] = z_value
-                logger.info(f"Using Z-threshold {z_value:.2f} for {pair}")
-            except Exception as e:
-                logger.warning(f"Could not compute optimal Z for {pair}, using default 2.0: {e}")
-                best_z[pair] = 2.0
+            logger.info(f"Using Z-threshold 2.0 for {pair}")
 
         # Run cross-validation
         logger.info(f"Running {args.splits}-fold CV on {len(args.pairs)} pairs")
@@ -213,16 +207,11 @@ def cmd_systematic(args) -> int:
         benchmark_returns = benchmark.iloc[:, 0].pct_change().dropna()
         logger.info(f"Loaded benchmark data: {len(benchmark_returns)} returns")
 
-        # Get Z thresholds
-        best_z = {}
+        # Use default Z threshold of 2.0 for all pairs
+        # For production use, run optimize_thresholds() to find optimal values
+        best_z = {pair: 2.0 for pair in args.pairs}
         for pair in args.pairs:
-            try:
-                z_value = get_best_z_threshold(pair, all_data[pair])
-                best_z[pair] = z_value
-                logger.info(f"Using Z-threshold {z_value} for {pair} (placeholder implementation)")
-            except Exception:
-                best_z[pair] = 2.0
-                logger.info(f"Using default Z-threshold 2.0 for {pair}")
+            logger.info(f"Using Z-threshold 2.0 for {pair}")
 
         # First run cross-validation to get artifacts
         logger.info("Running cross-validation for systematic backtest...")
